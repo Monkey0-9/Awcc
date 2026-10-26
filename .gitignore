@@ -1,6 +1,5 @@
 # Rust Target
 target/
-Cargo.lock
 
 # Kernel build artifacts
 *.o

@@ -9,12 +9,18 @@ pub struct ThermalGovernor {
     last_boost: u8,
 }
 
+impl Default for ThermalGovernor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ThermalGovernor {
     pub fn new() -> Self {
         Self { last_boost: 0 }
     }
 
-    /// Evaluates piecewise-linear boost curve with 3°C anti-hunt hysteresis
+    /// Evaluates piecewise-linear boost curve with anti-hunt hysteresis
     pub fn compute_boost(&mut self, max_temp: f32) -> u8 {
         let raw_target = if max_temp < 50.0 {
             0
@@ -25,9 +31,9 @@ impl ThermalGovernor {
             (ratio * 255.0) as u8
         };
 
-        // Anti-hunt hysteresis: don't ramp down immediately if drop is under 3°C
+        // Anti-hunt hysteresis: don't ramp down aggressively if drop is minor
         if raw_target < self.last_boost {
-            // Apply gradual ramp-down damping (max 15 units per step)
+            // Apply gradual ramp-down damping (max 15 units per cycle)
             let damped = self.last_boost.saturating_sub(15);
             self.last_boost = std::cmp::max(damped, raw_target);
         } else {
@@ -49,37 +55,65 @@ fn main() {
 
     let term_clone = Arc::clone(&term);
     thread::spawn(move || {
-        for _ in signals.forever() {
+        if signals.forever().next().is_some() {
             println!("\n[!] Received termination signal! Restoring firmware fan control...");
             term_clone.store(true, Ordering::SeqCst);
-            break;
         }
     });
 
-    println!("[+] awccd initialized with multi-sensor thermal governor. Active monitoring running.");
+    println!(
+        "[+] awccd initialized with multi-sensor thermal governor and failsafe safety policy."
+    );
 
     while !term.load(Ordering::SeqCst) {
         let thermals = hw.read_thermal_telemetry();
-        let cpu_temp = thermals.cpu_core_max_temp;
-        let gpu_temp = thermals.gpu_temp.unwrap_or(0.0);
-        let max_temp = cpu_temp.max(gpu_temp);
+        let cpu_temp = thermals.cpu_core_max_temp.or(thermals.cpu_pkg_temp);
+        let gpu_temp = thermals.gpu_temp;
 
-        let (current_profile, _) = HardwareManager::get_platform_profile();
+        let effective_temp = match (cpu_temp, gpu_temp) {
+            (Some(c), Some(g)) => Some(c.max(g)),
+            (Some(c), None) => Some(c),
+            (None, Some(g)) => Some(g),
+            (None, None) => None,
+        };
 
-        // If in custom or auto curve mode, adjust fans dynamically
-        if current_profile == "custom" {
-            let target_boost = governor.compute_boost(max_temp);
-            for fan in 1..=2 {
-                let _ = hw.write_fan_boost(fan, target_boost);
+        let (current_profile, _, _) = hw.get_platform_profile();
+        let fans = hw.discover_fans();
+
+        match effective_temp {
+            Some(temp) => {
+                // If in custom mode, run autonomous piecewise thermal curve
+                if current_profile == "custom" {
+                    let target_boost = governor.compute_boost(temp);
+                    for fan in &fans {
+                        if let Err(e) = hw.write_fan_boost(fan.fan_index, target_boost) {
+                            eprintln!(
+                                "[-] Error: Failed to actuate boost on fan {}: {}",
+                                fan.fan_index, e
+                            );
+                        }
+                    }
+                }
+            }
+            None => {
+                // Failsafe safety policy: Never assume 0°C if sensors are unavailable!
+                // Release to firmware or log warning
+                eprintln!("[!] Warning: Sensor telemetry unavailable; avoiding fan suppression.");
             }
         }
 
         thread::sleep(Duration::from_secs(1));
     }
 
-    println!("[*] Releasing fan boost to 0 before daemon shutdown...");
-    for fan in 1..=2 {
-        let _ = hw.write_fan_boost(fan, 0);
+    println!("[*] Fail-safe shutdown: Releasing fan boost to 0 before exit...");
+    let fans = hw.discover_fans();
+    for fan in &fans {
+        if let Err(e) = hw.write_fan_boost(fan.fan_index, 0) {
+            eprintln!(
+                "[-] Warning: Failed to release fan {}: {}",
+                fan.fan_index, e
+            );
+        }
     }
     println!("[+] Fail-safe daemon shutdown complete.");
 }
