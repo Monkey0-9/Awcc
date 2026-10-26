@@ -147,18 +147,39 @@ def format_telemetry_line(label, gauge_str, val_str, mid_str, right_str, inner_w
     line = f"{l} {gauge_str} {v} {MUTED_GRAY}│{RESET} {m} {MUTED_GRAY}│{RESET} {r}"
     return make_row(line, inner_width)
 
-def get_hwmon():
-    for d in os.listdir("/sys/class/hwmon"):
-        p = os.path.join("/sys/class/hwmon", d)
+def find_hwmon_by_name(target_name):
+    hwmon_base = "/sys/class/hwmon"
+    if not os.path.isdir(hwmon_base):
+        return None
+    for d in os.listdir(hwmon_base):
+        p = os.path.join(hwmon_base, d)
         name_path = os.path.join(p, "name")
         if os.path.isfile(name_path):
             try:
                 with open(name_path, "r") as f:
-                    if f.read().strip() == "alienware_wmi":
+                    if f.read().strip() == target_name:
                         return p
             except Exception:
                 pass
     return None
+
+def get_hwmon():
+    return find_hwmon_by_name("alienware_wmi")
+
+def get_fan_max(aw_hwmon):
+    m1, m2 = 4800, 4800
+    if aw_hwmon and os.path.isdir(aw_hwmon):
+        try:
+            with open(os.path.join(aw_hwmon, "fan1_max"), "r") as f:
+                m1 = int(f.read().strip())
+        except Exception:
+            pass
+        try:
+            with open(os.path.join(aw_hwmon, "fan2_max"), "r") as f:
+                m2 = int(f.read().strip())
+        except Exception:
+            pass
+    return m1, m2
 
 def get_cpu_info(prev_total, prev_idle):
     try:
@@ -185,13 +206,13 @@ def get_cpu_info(prev_total, prev_idle):
         avg_mhz = 1600.0
 
     temp = 45.0
-    for h in ["hwmon7", "hwmon5", "hwmon4", "hwmon3"]:
-        tp = f"/sys/class/hwmon/{h}/temp1_input"
+    ct_p = find_hwmon_by_name("coretemp") or find_hwmon_by_name("alienware_wmi") or find_hwmon_by_name("dell_smm")
+    if ct_p:
+        tp = os.path.join(ct_p, "temp1_input")
         if os.path.isfile(tp):
             try:
                 with open(tp, "r") as f:
                     temp = float(f.read().strip()) / 1000.0
-                    break
             except Exception:
                 pass
 
@@ -239,13 +260,13 @@ def get_fans(aw_hwmon):
         except Exception:
             pass
     if r1 == 0 or r2 == 0:
-        for fallback in ["hwmon4"]:
-            fb_p = f"/sys/class/hwmon/{fallback}"
+        smm_p = find_hwmon_by_name("dell_smm")
+        if smm_p:
             try:
-                if r1 == 0 and os.path.isfile(f"{fb_p}/fan1_input"):
-                    with open(f"{fb_p}/fan1_input", "r") as f: r1 = int(f.read().strip())
-                if r2 == 0 and os.path.isfile(f"{fb_p}/fan2_input"):
-                    with open(f"{fb_p}/fan2_input", "r") as f: r2 = int(f.read().strip())
+                if r1 == 0 and os.path.isfile(f"{smm_p}/fan1_input"):
+                    with open(f"{smm_p}/fan1_input", "r") as f: r1 = int(f.read().strip())
+                if r2 == 0 and os.path.isfile(f"{smm_p}/fan2_input"):
+                    with open(f"{smm_p}/fan2_input", "r") as f: r2 = int(f.read().strip())
             except Exception:
                 pass
     return b1, b2, r1, r2

@@ -1,0 +1,44 @@
+name: AWCC Linux CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  static-quality:
+    name: Code Quality & Security Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check Rust formatting
+        run: cargo fmt --check
+
+      - name: Run Clippy (deny warnings)
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Run Rust workspace tests (including mock hardware fixtures)
+        run: cargo test --workspace
+
+      - name: Security Regression Check (assert no world-writable sysfs rules)
+        run: ./tests/security_permissions_test.sh
+
+      - name: Portability Regression Check (assert no hardcoded user paths)
+        run: ./tests/portability_path_test.sh
+
+      - name: Performance Semantics Check (assert boost 255)
+        run: ./tests/test_performance_semantics.sh
+
+      - name: Shell Syntax Check
+        run: ./tests/shell_syntax_check.sh
+
+      - name: Python Dashboard Syntax Verification
+        run: python3 -m py_compile bin/awcc-lux-dashboard.py

@@ -1,24 +1,25 @@
-# AWCC Linux Fan Control (`awcc-linux`)
-High-performance, secure fan control, platform profile orchestration, and real-time tachometer telemetry suite for Dell G-Series & Alienware laptops on Enterprise Linux.
+# AWCC Linux (`awcc-linux`)
 
-Primary Target Platform: **Dell G15 5530** running **Red Hat Enterprise Linux 10.2** (Kernel 6.12+).
+Enterprise fan control, platform profile orchestration, and real-time tachometer telemetry suite for Dell G-Series & Alienware laptops on Linux.
+
+**Primary Target Platform**: Dell G15 5530 (i7-13650HX, RTX 3050 6GB) on Red Hat Enterprise Linux 10.2 / Fedora / CentOS Stream (Kernel 6.12+).
 
 ---
 
 ## Architecture Overview
 
 ```
-                      /usr/local/bin/rhel-performance
+                      /usr/local/bin/rhel-performance (Boost 255/255)
                                     |
                                  awccctl
-                       (CLI & Telemetry Engine)
+                        (CLI & Telemetry Engine)
                                     |
                                   awccd
-                       (Policy & Safety Daemon)
+                        (Policy & Safety Daemon)
                                     |
-                    sysfs (/sys/class/hwmon/hwmonX)
+                sysfs (/sys/class/hwmon/hwmonX [0644])
                                     |
-                 alienware-wmi.ko (Backported & Signed)
+                 alienware-wmi.ko (Signed Kernel Module)
                                     |
                       WMAX WMI Node (PNP0C14:0b)
                                     |
@@ -27,93 +28,92 @@ Primary Target Platform: **Dell G15 5530** running **Red Hat Enterprise Linux 10
 
 ---
 
+## Security Model & Privilege Boundary
+- **Secure Root Controls (0644)**: System fan boost nodes (`fan[1-2]_boost`) and platform profile switches are restricted to root. World-writable permissions (`chmod 0666`) are strictly forbidden.
+- **Unprivileged Telemetry**: Unprivileged users can freely inspect real-time tachometer RPM, temperatures, and current profiles via `awccctl status`, `awccctl detect`, or the cybernetic terminal dashboard.
+- **Privileged Actuation**: Changing profiles or commanding fan boosts requires `sudo` or the systemd background daemon (`awccd.service`). For convenience with desktop hotkeys (such as F9), an optional `/etc/sudoers.d/awcc-linux` rule permits wheel users to run `awccctl` fan and profile commands without a password prompt.
+
+---
+
 ## Quick Start & Verification
 
-### 1. Build and Sign the Driver
+### 1. Build and Sign the Driver (if not yet installed)
 ```bash
-cd Awcc/kernel
+cd kernel
 make
 ./scripts/sign-module.sh
 ```
 
 ### 2. Load Driver
 ```bash
-sudo insmod alienware-wmi.ko
-# or copy to /lib/modules/$(uname -r)/extra/ and run depmod -a
+sudo insmod kernel/alienware-wmi.ko
+# Or install system-wide via DKMS / installer:
+sudo ./bin/install-system.sh
 ```
 
 ### 3. Check System Diagnostics
 ```bash
-cargo run --release --bin awccctl -- doctor
+awccctl doctor
 ```
 
 ### 4. Telemetry Status
 ```bash
-# Tabular mode
-cargo run --release --bin awccctl -- status
+# Formatted tabular display
+awccctl status
 
-# Machine-readable JSON mode
-cargo run --release --bin awccctl -- status --json
+# Machine-readable JSON
+awccctl status --json
 ```
 
-### 5. Actuate Performance Mode & Fans
+### 5. Actuate True Maximum Performance & Fans
 ```bash
-./bin/rhel-performance
+sudo ./bin/rhel-performance
+```
+*Applies 100% boost (`255/255`) on all controllable fans and verifies tachometer acceleration up to rated hardware ceiling (~4,800 RPM).*
+
+---
+
+## Operational Modes
+
+| Mode | Shortcut | Platform Profile | Fan Boost | RPM Ceiling | Description |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Battery Saver** | `awcc-battery` | `quiet` | `10/255` (~4%) | ~1,000 RPM | Silent whisper, restricts thermal headroom for maximum battery runtime |
+| **Quiet** | `awcc-quiet` | `quiet` | `20/255` (~8%) | ~1,450 RPM | Low-noise acoustic silence for study and office environments |
+| **Balance** | `awcc-balance` | `balanced` | `40/255` (~16%) | ~1,980 RPM | Daily productivity balance with moderate cooling |
+| **Mid** | `awcc-mid` | `performance` | `65/255` (~25%) | ~3,100 RPM | Sustained compilation, light gaming, content creation |
+| **High** | `awcc-high` | `performance` | `85/255` (~33%) | ~4,200 RPM | Heavy gaming and sustained computational workloads |
+| **Ultra (G-Mode)**| `awcc-ultra` / `rhel-performance` | `performance` | `255/255` (100%) | ~4,800 RPM | True maximum fan speed and peak performance headroom |
+
+---
+
+## Cybernetic Terminal Dashboard (TUI Cockpit)
+
+Launch the real-time ANSI terminal cockpit for live tachometer graphs, temperatures, clock speeds, and keyboard shortcuts:
+
+```bash
+python3 bin/awcc-lux-dashboard.py
+# Or snapshot one-liner:
+python3 bin/awcc-lux-dashboard.py --snapshot
+```
+
+*Note: The dashboard is a terminal user interface (TUI). A native GTK4/Libadwaita desktop GUI is planned for Phase 4 of the roadmap.*
+
+---
+
+## Hardware Game Shift Hotkey (F9)
+
+To bind the Dell F9 Game Shift key in GNOME desktop environments:
+```bash
+./bin/setup-f9-keybind.sh
+```
+To cleanly remove the binding without affecting your other desktop shortcuts:
+```bash
+./bin/uninstall-f9-keybind.sh
 ```
 
 ---
 
-## Safety Features
-- **No Raw EC Writes**: All communication goes through the Dell ACPI WMI WMAX interface.
-- **Fail-Safe Cleanup**: The `awccd` daemon traps `SIGINT`/`SIGTERM` and sleep signals, resetting `fan[1-2]_boost` to `0` to return control to BIOS EC fan curves.
-- **Tachometer Readback**: Clearly differentiates requested boost (`0-255`), readback boost, and measured tachometer RPM.
-
-## Unified Operational Modes (`battery`, `quiet`, `balance`, `high`, `ultra`)
-
-You can now toggle between complete power & fan profiles instantly using single-word commands from anywhere in your terminal:
-
-- **`battery`**: Restricts power envelope and keeps fans silent (boost = 0).
-- **`quiet`**: Prioritizes acoustic silence (boost = 0, quiet platform profile).
-- **`balance`**: Everyday balance of CPU/GPU clocks and moderate airflow (boost = 80).
-- **`high`**: High performance with sustained strong airflow (boost = 180).
-- **`ultra`**: Dell Game Shift (G-Mode) with maximum cooling & fan speed (boost = 255, ~5,000 RPM).
-
-## Dedicated `awcc-*` Command Suite
-
-You can run any of the dedicated `awcc-*` commands directly from your terminal:
-
-- **`awcc-battery`**: Boost `26/255` (~10% step) + `quiet` power profile
-- **`awcc-quiet`**: Boost `51/255` (20% step) + `quiet` profile
-- **`awcc-balance`**: Boost `102/255` (40% step) + `balanced` profile
-- **`awcc-mid`**: Boost `153/255` (60% step) + `performance` profile
-- **`awcc-high`**: Boost `204/255` (80% step) + `performance` profile
-- **`awcc-ultra`**: Boost `255/255` (100% max step) + Dell Game Shift (G-Mode) (~5,000 RPM)
-
-## Real-Time Live Monitor Dashboard
-
-Launch the dynamic full-screen terminal monitor by running:
-
-```bash
-awcc-monitor
-# or simply:
-monitor
-```
-
-It displays:
-- Real-time Fan 1 (CPU) & Fan 2 (GPU) boost gauges & physical tachometer RPMs.
-- Active platform profile and Dell Game-Shift (G-Mode) status.
-- Live temperature telemetry for Intel CPU package, motherboard VRMs, and NVIDIA GPU die.
-
-## Hardware F9 Game-Shift (G-Mode) Key Integration
-
-On Dell G15 laptops, the **F9** key (marked with the 'G' Game-Shift logo) toggles G-Mode:
-
-- **When G-Mode is OFF**: Pressing **`F9`** immediately activates **G-Mode Ultra Performance & Max Fans (~5,000 RPM)**.
-- **When G-Mode is ON**: Pressing **`F9`** deactivates G-Mode and restores **Balanced** mode.
-
-You can also trigger it from the terminal via:
-```bash
-awcc-gameshift-toggle
-# or simply:
-gmode
-```
+## License & Third-Party Provenance
+- **Kernel Module (`kernel/`)**: GNU General Public License v2.0 or later ([GPL-2.0-or-later](LICENSES/GPL-2.0.txt)), derived from upstream `alienware-wmi` patches by Kurt Borja and Mario Limonciello.
+- **Userspace Rust Crates and Scripts (`crates/`, `bin/`)**: [MIT License](LICENSES/MIT.txt).
+- Full file-by-file inventory is documented in [docs/provenance-and-licenses.md](docs/provenance-and-licenses.md).
