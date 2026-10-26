@@ -1,2 +1,7 @@
-#!/bin/bash
-exec /home/unknownuser/Awcc/bin/awcc-mode.sh "quiet" "$@"
+#!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODE_SCRIPT="${SCRIPT_DIR}/awcc-mode.sh"
+if [[ ! -x "${MODE_SCRIPT}" ]]; then
+    MODE_SCRIPT="awcc-mode"
+fi
+exec "${MODE_SCRIPT}" "quiet" "$@"

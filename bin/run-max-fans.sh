@@ -5,19 +5,26 @@ echo "================================================================="
 echo " AWCC Linux: Actuating Maximum Fan RPM (Dell G15 5530)"
 echo "================================================================="
 
-MODULE="/home/unknownuser/Awcc/kernel/alienware-wmi.ko"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+MODULE="${REPO_DIR}/kernel/alienware-wmi.ko"
 
 # 1. Check if driver is loaded, if not try insmod
 if ! lsmod | grep -q "alienware_wmi"; then
     echo "[*] alienware-wmi driver not yet active in kernel."
-    echo "[*] Attempting to load ${MODULE}..."
-    if [[ $EUID -eq 0 ]]; then
-        insmod "${MODULE}"
+    if [[ -f "${MODULE}" ]]; then
+        echo "[*] Attempting to load ${MODULE}..."
+        if [[ $EUID -eq 0 ]]; then
+            insmod "${MODULE}"
+        else
+            sudo insmod "${MODULE}" || {
+                echo "[-] Error: Failed to load module. Please run: sudo insmod ${MODULE}" >&2
+                exit 1
+            }
+        fi
     else
-        sudo insmod "${MODULE}" || {
-            echo "[-] Error: Failed to load module. Please run: sudo insmod ${MODULE}" >&2
-            exit 1
-        }
+        echo "[-] Error: ${MODULE} not found. Please build the driver in kernel/ first." >&2
+        exit 1
     fi
 fi
 
@@ -68,13 +75,22 @@ fi
 echo "[*] Monitoring fan rotor acceleration across both channels:"
 for i in {1..10}; do
     sleep 1
-    RPM1=$(cat "${AW_HWMON}/fan1_input" 2>/dev/null || cat /sys/class/hwmon/hwmon4/fan1_input 2>/dev/null || echo "0")
-    RPM2=$(cat "${AW_HWMON}/fan2_input" 2>/dev/null || cat /sys/class/hwmon/hwmon4/fan2_input 2>/dev/null || echo "0")
+    RPM1=$(cat "${AW_HWMON}/fan1_input" 2>/dev/null || echo "0")
+    RPM2=$(cat "${AW_HWMON}/fan2_input" 2>/dev/null || echo "0")
     B1=$(cat "${AW_HWMON}/fan1_boost" 2>/dev/null || echo "?")
     B2=$(cat "${AW_HWMON}/fan2_boost" 2>/dev/null || echo "?")
     printf "  [T+%02ds] Fan 1 (CPU): %4s RPM (boost: %s/255) | Fan 2 (GPU): %4s RPM (boost: %s/255)\n" "$i" "$RPM1" "$B1" "$RPM2" "$B2"
 done
 
+MAX1=$(cat "${AW_HWMON}/fan1_max" 2>/dev/null || echo "Unknown")
+MAX2=$(cat "${AW_HWMON}/fan2_max" 2>/dev/null || echo "Unknown")
+
 echo "================================================================="
-echo "[+] Maximum fan speed achieved and verified!"
+if [[ "$B1" == "255" ]] && [[ "$B2" == "255" ]]; then
+    echo "[+] Maximum fan boost (255/255) readback verified."
+    echo "    Current RPM: Fan 1 = ${RPM1}/${MAX1} | Fan 2 = ${RPM2}/${MAX2}"
+else
+    echo "[-] Warning: Boost readback mismatch (Fan 1: ${B1}/255, Fan 2: ${B2}/255)." >&2
+    exit 1
+fi
 echo "================================================================="

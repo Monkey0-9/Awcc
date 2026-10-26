@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 DASHBOARD_SCRIPT=""
 for candidate in \
     "${SCRIPT_DIR}/awcc-lux-dashboard.py" \
-    "/home/unknownuser/.local/bin/awcc-lux-dashboard.py" \
+    "${HOME}/.local/bin/awcc-lux-dashboard.py" \
     "/usr/local/bin/awcc-lux-dashboard.py" \
     "/usr/bin/awcc-lux-dashboard.py"; do
     if [[ -f "$candidate" ]]; then

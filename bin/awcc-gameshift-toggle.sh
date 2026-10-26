@@ -1,15 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-# Ensure PATH includes user and system binaries
-export PATH="/home/unknownuser/.local/bin:/home/unknownuser/Awcc/bin:/usr/local/bin:/usr/bin:$PATH"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 AWCC_MODE_CMD=""
 for candidate in \
     "${SCRIPT_DIR}/awcc-mode.sh" \
     "${SCRIPT_DIR}/awcc-mode" \
-    "/home/unknownuser/.local/bin/awcc-mode" \
+    "${HOME}/.local/bin/awcc-mode" \
     "/usr/local/bin/awcc-mode" \
     "/usr/bin/awcc-mode"; do
     if [[ -x "$candidate" ]]; then

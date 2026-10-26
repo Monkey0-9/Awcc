@@ -21,11 +21,22 @@ if command -v gsettings >/dev/null 2>&1; then
         gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$NEW_BINDINGS" 2>/dev/null || true
     fi
 
+    TARGET_CMD=""
+    if command -v awcc-gameshift-toggle >/dev/null 2>&1; then
+        TARGET_CMD="$(command -v awcc-gameshift-toggle)"
+    elif [[ -x "${HOME}/.local/bin/awcc-gameshift-toggle" ]]; then
+        TARGET_CMD="${HOME}/.local/bin/awcc-gameshift-toggle"
+    elif [[ -x "/usr/local/bin/awcc-gameshift-toggle" ]]; then
+        TARGET_CMD="/usr/local/bin/awcc-gameshift-toggle"
+    else
+        TARGET_CMD="awcc-gameshift-toggle"
+    fi
+
     gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KEYPATH name "Dell AWCC Game Shift (F9)" 2>/dev/null || true
-    gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KEYPATH command "/home/unknownuser/.local/bin/awcc-gameshift-toggle" 2>/dev/null || true
+    gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KEYPATH command "$TARGET_CMD" 2>/dev/null || true
     gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$KEYPATH binding "F9" 2>/dev/null || true
 
-    echo "[+] Successfully bound F9 to /home/unknownuser/.local/bin/awcc-gameshift-toggle!"
+    echo "[+] Successfully bound F9 to ${TARGET_CMD}!"
 fi
 
 echo "[*] You can test toggling Game Shift anytime by running: 'awcc-gmode' or pressing F9."

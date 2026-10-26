@@ -1,10 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-MODULE="/home/unknownuser/Awcc/kernel/alienware-wmi.ko"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+MODULE="${REPO_DIR}/kernel/alienware-wmi.ko"
 
 if [[ ! -f "${MODULE}" ]]; then
-    echo "[-] Error: ${MODULE} does not exist. Run 'make' in Awcc/kernel." >&2
+    echo "[-] Error: ${MODULE} does not exist. Run 'make' in kernel/." >&2
     exit 1
 fi
 

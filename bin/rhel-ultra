@@ -1,2 +1,8 @@
-#!/bin/bash
-exec /home/unknownuser/Awcc/bin/set-profile-helper.sh performance 255 "ULTRA PERFORMANCE (Boost 255/255)"
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HELPER="${SCRIPT_DIR}/set-profile-helper.sh"
+if [[ ! -x "${HELPER}" ]]; then
+    HELPER="set-profile-helper.sh"
+fi
+exec "${HELPER}" performance 255 "ULTRA PERFORMANCE (Boost 255/255)"

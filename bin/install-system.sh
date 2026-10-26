@@ -1,7 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-MODULE_SRC="/home/unknownuser/Awcc/kernel/alienware-wmi.ko"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+MODULE_SRC="${REPO_DIR}/kernel/alienware-wmi.ko"
 KVER="$(uname -r)"
 DEST_DIR="/lib/modules/${KVER}/extra"
 
@@ -16,8 +18,8 @@ fi
 
 if [[ ! -f "${MODULE_SRC}" ]]; then
     echo "[*] Module ${MODULE_SRC} not found. Building and signing..."
-    make -C /home/unknownuser/Awcc/kernel
-    /home/unknownuser/Awcc/kernel/scripts/sign-module.sh
+    make -C "${REPO_DIR}/kernel"
+    "${REPO_DIR}/kernel/scripts/sign-module.sh"
 fi
 
 echo "[1/6] Copying signed driver to ${DEST_DIR}..."
@@ -62,11 +64,11 @@ BIN_LIST=(
 )
 
 for b in "${BIN_LIST[@]}"; do
-    if [[ -f "/home/unknownuser/.local/bin/$b" ]]; then
-        cp -f "/home/unknownuser/.local/bin/$b" "/usr/local/bin/$b"
+    if [[ -f "${REPO_DIR}/bin/$b" ]]; then
+        cp -f "${REPO_DIR}/bin/$b" "/usr/local/bin/$b"
         chmod 0755 "/usr/local/bin/$b"
-    elif [[ -f "/home/unknownuser/Awcc/bin/$b" ]]; then
-        cp -f "/home/unknownuser/Awcc/bin/$b" "/usr/local/bin/$b"
+    elif [[ -f "${REPO_DIR}/target/release/$b" ]]; then
+        cp -f "${REPO_DIR}/target/release/$b" "/usr/local/bin/$b"
         chmod 0755 "/usr/local/bin/$b"
     fi
 done

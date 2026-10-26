@@ -3,8 +3,16 @@ set -euo pipefail
 
 # rhel-balanced: Restores Dell G15 5530 Balanced Profile & Releases Fan Boost
 
-AWCCCTL="/home/unknownuser/Awcc/target/release/awccctl"
-if [[ ! -x "${AWCCCTL}" ]]; then
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+if command -v awccctl >/dev/null 2>&1; then
+    AWCCCTL="awccctl"
+elif [[ -x "${REPO_DIR}/target/release/awccctl" ]]; then
+    AWCCCTL="${REPO_DIR}/target/release/awccctl"
+elif [[ -x "${REPO_DIR}/target/debug/awccctl" ]]; then
+    AWCCCTL="${REPO_DIR}/target/debug/awccctl"
+else
     AWCCCTL="awccctl"
 fi
 
