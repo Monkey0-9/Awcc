@@ -1,0 +1,43 @@
+.TH AWCC-MODE 1 "October 2026" "AWCC Linux 0.3.0" "User Commands"
+.SH NAME
+awcc-mode \- Hardware Performance Profile Actuator and Live Telemetry Governor
+.SH SYNOPSIS
+.B awcc-mode
+[\fIPROFILE\fR] [\fIFLAG\fR]
+.SH DESCRIPTION
+.B awcc-mode
+actuates acoustic and performance profiles (e.g. \fIbattery\fR, \fIquiet\fR, \fIbalance\fR, \fImid\fR, \fIhigh\fR, \fIultra\fR),
+verifies readback fan boost offsets and platform profiles, and seamlessly transitions
+into continuous live telemetry monitoring.
+.SH PROFILES
+.TP
+.B battery
+Energy saver profile (10/255 boost, ~1,200 RPM acoustic baseline).
+.TP
+.B quiet
+Acoustic silence profile (20/255 boost, ~1,450 RPM acoustic baseline).
+.TP
+.B balance
+Standard dynamic hybrid thermal profile (40/255 boost, ~2,200 RPM).
+.TP
+.B mid
+Moderate gaming thermal profile (75/255 boost, ~3,100 RPM).
+.TP
+.B high
+High-performance thermal profile (120/255 boost, ~3,900 RPM).
+.TP
+.B ultra
+Full acoustic and thermal overboost (255/255 boost, ~4,800\(en5,029 RPM).
+.SH FLAGS
+.TP
+.B \-\-track, \-\-watch, \-w, \-\-monitor, \-m
+Actuate the profile and immediately stream continuous live monitoring until Ctrl+C.
+.TP
+.B \-\-once, \-\-snapshot, \-s, \-\-no\-monitor
+Actuate the profile and print a single-shot status matrix without streaming.
+.TP
+.B \-\-quiet, \-q
+Actuate the profile silently without printing telemetry.
+.SH SEE ALSO
+.BR awccctl (1),
+.BR awcc-lux-dashboard (1)

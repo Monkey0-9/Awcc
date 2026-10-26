@@ -1,0 +1,63 @@
+.TH AWCCCTL 1 "October 2026" "AWCC Linux 0.3.0" "User Commands"
+.SH NAME
+awccctl \- Universal Linux Hardware Performance, Fan Control & Telemetry Utility
+.SH SYNOPSIS
+.B awccctl
+[\fIOPTIONS\fR] \fISUBCOMMAND\fR [\fIARGS\fR...]
+.SH DESCRIPTION
+.B awccctl
+is the command-line interface for the AWCC Linux performance and cooling ecosystem.
+It provides hardware detection, platform profile management, fan boost offset
+control, Game Shift (G-Mode) toggling, low-level CPUID hardware interrogation,
+cycle-accurate RDTSC bus latency diagnostics, and real-time streaming telemetry.
+.PP
+Hardware support spans Alienware/Dell G-Series, ASUS ROG/TUF, Lenovo ThinkPad/Legion,
+HP OMEN, Acer Predator/Nitro, MSI Gaming, Framework, System76, and standard Linux desktop motherboards.
+.SH SUBCOMMANDS
+.TP
+.B status [\-\-json]
+Display the complete telemetry matrix including CPU and GPU compute utilization, clocks,
+temperatures, package and board power, RAM, battery, and fan speeds.
+.TP
+.B profile [\fIPROFILE\fR] [\-w|\-\-watch] [\-m|\-\-monitor]
+Get or set the active ACPI platform performance profile (e.g. \fIquiet\fR, \fIbalanced\fR, \fIperformance\fR).
+When actuated with \fB\-\-monitor\fR or \fB\-\-watch\fR, streams continuous telemetry.
+.TP
+.B fan \fIboost\fR <\fIINDEX\fR> <\fIBOOST\fR>
+Set the fan boost offset (0\(en255) for the designated fan index (1=CPU, 2=GPU).
+.TP
+.B fan max
+Engage maximum cooling turbines across all discovered fans (255/255 boost or disengaged mode).
+.TP
+.B fan release
+Release fan overrides back to automatic firmware/BIOS thermal control curves.
+.TP
+.B gmode [status|on|off|toggle]
+Control or query Alienware Game Shift (G-Mode) instantaneous high-performance state.
+.TP
+.B track, monitor [\-\-interval <\fISEC\fR>] [\-\-json] [\-\-once]
+Continuously stream live hardware telemetry in real time. Terminate cleanly with \fBCtrl+C\fR.
+.TP
+.B capabilities [\-\-json]
+Inspect auto-detected hardware classification, tier, provider adapter, and available controls.
+.TP
+.B doctor
+Run comprehensive system diagnostic checks, verify sysfs file security permissions (0644/0755),
+probe CPUID assembly leaves for DTS and HWP Speed Shift, and measure sub-microsecond ACPI read latency via RDTSC.
+.TP
+.B verify [\-\-step\-duration <\fISEC\fR>]
+Execute a 5-step fan ladder calibration sequence to verify tachometer RPM response.
+.SH OPTIONS
+.TP
+.B \-h, \-\-help
+Print help information and exit.
+.TP
+.B \-V, \-\-version
+Print version information and exit.
+.SH PRIVILEGE BOUNDARY
+Hardware actuation requires root privileges mediated through \fBsudo\fR, PolicyKit
+(\fBpkexec\fR / \fIio.github.monkey0_9.awcc.pkexec\fR), or the \fBawccd\fR background daemon.
+Sysfs nodes remain strictly non-world-writable (\fB0644\fR).
+.SH SEE ALSO
+.BR awcc-lux-dashboard (1),
+.BR awcc-mode (1)

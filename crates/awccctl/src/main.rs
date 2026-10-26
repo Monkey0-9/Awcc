@@ -347,12 +347,7 @@ fn render_status_snapshot(hw: &HardwareManager, json: bool) {
     render_status_snapshot_internal(hw, json, false, 1.0);
 }
 
-fn render_status_snapshot_internal(
-    hw: &HardwareManager,
-    json: bool,
-    is_live: bool,
-    interval: f64,
-) {
+fn render_status_snapshot_internal(hw: &HardwareManager, json: bool, is_live: bool, interval: f64) {
     let tele = hw.get_telemetry();
     if json {
         println!("{}", serde_json::to_string_pretty(&tele).unwrap());
@@ -1103,6 +1098,58 @@ fn cmd_doctor(hw: &HardwareManager) {
     );
     println!("12. Fan Control Capability: {:?}", caps.fan_control);
     println!("13. Game Shift (G-Mode):    {}", hw.check_gmode_status());
+
+    // Low-Level Hardware Assembly Diagnostics (x86_64 CPUID & RDTSC)
+    let hw_feat = awcc_core::hw::cpuid::probe_cpu_features();
+    if !hw_feat.vendor_id.is_empty() {
+        println!(
+            "14. CPUID Assembly Probe:   {} [Family 0x{:X}, Model 0x{:X}, Stepping {}]",
+            if !hw_feat.brand_string.is_empty() {
+                &hw_feat.brand_string
+            } else {
+                &hw_feat.vendor_id
+            },
+            hw_feat.family,
+            hw_feat.model,
+            hw_feat.stepping
+        );
+        println!(
+            "    - Thermal & Power Feats: DTS: {}, Turbo: {}, HWP (Speed Shift): {}, EPP: {}",
+            if hw_feat.digital_thermal_sensor {
+                "YES".green()
+            } else {
+                "NO".dimmed()
+            },
+            if hw_feat.turbo_boost {
+                "YES".green()
+            } else {
+                "NO".dimmed()
+            },
+            if hw_feat.hwp_supported {
+                "YES".green()
+            } else {
+                "NO".dimmed()
+            },
+            if hw_feat.hwp_epp_supported {
+                "YES".green()
+            } else {
+                "NO".dimmed()
+            },
+        );
+    }
+
+    let bus_lat_ns = hw.measure_sysfs_bus_latency();
+    let tsc_mhz = awcc_core::hw::rdtsc::get_or_calibrate_tsc_freq() / 1_000_000;
+    println!(
+        "15. Hardware Timer (RDTSC):  Calibrated TSC: {} MHz | ACPI Bus Latency: {}",
+        tsc_mhz.to_string().cyan(),
+        if bus_lat_ns < 100_000 {
+            format!("{} ns (High Performance)", bus_lat_ns).green()
+        } else {
+            format!("{} ns (Standard ACPI)", bus_lat_ns).yellow()
+        }
+    );
+
     println!("=== Diagnostics Complete ===");
 }
 

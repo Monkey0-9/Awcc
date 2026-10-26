@@ -156,6 +156,34 @@ if [[ -f "${REPO_DIR}/packaging/icons/awcc-gui.svg" ]]; then
     cp -f "${REPO_DIR}/packaging/icons/awcc-gui.svg" /usr/share/icons/hicolor/scalable/apps/awcc-gui.svg
 fi
 
+# Install Shell Completions
+echo "[*] Installing shell completions (Bash, Zsh, Fish)..."
+if [[ -f "${REPO_DIR}/completions/bash/awccctl" ]]; then
+    mkdir -p /usr/share/bash-completion/completions
+    cp -f "${REPO_DIR}/completions/bash/awccctl" /usr/share/bash-completion/completions/awccctl
+    chmod 0644 /usr/share/bash-completion/completions/awccctl
+fi
+if [[ -f "${REPO_DIR}/completions/zsh/_awccctl" ]]; then
+    mkdir -p /usr/share/zsh/site-functions
+    cp -f "${REPO_DIR}/completions/zsh/_awccctl" /usr/share/zsh/site-functions/_awccctl
+    chmod 0644 /usr/share/zsh/site-functions/_awccctl
+fi
+if [[ -f "${REPO_DIR}/completions/fish/awccctl.fish" ]]; then
+    mkdir -p /usr/share/fish/vendor_completions.d
+    cp -f "${REPO_DIR}/completions/fish/awccctl.fish" /usr/share/fish/vendor_completions.d/awccctl.fish
+    chmod 0644 /usr/share/fish/vendor_completions.d/awccctl.fish
+fi
+
+# Install Manual Pages
+echo "[*] Installing Unix manual pages to /usr/share/man/man1..."
+mkdir -p /usr/share/man/man1
+for mp in awccctl.1 awcc-lux-dashboard.1 awcc-mode.1; do
+    if [[ -f "${REPO_DIR}/man/man1/${mp}" ]]; then
+        cp -f "${REPO_DIR}/man/man1/${mp}" "/usr/share/man/man1/${mp}"
+        chmod 0644 "/usr/share/man/man1/${mp}"
+    fi
+done
+
 # Install PolicyKit policy and sudoers configuration
 if [[ -d /usr/share/polkit-1/actions ]] && [[ -f "${REPO_DIR}/packaging/io.github.monkey0_9.awcc.policy" ]]; then
     echo "[*] Installing PolicyKit action policy..."

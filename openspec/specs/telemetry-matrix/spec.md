@@ -33,3 +33,21 @@ The system SHALL provide continuous real-time hardware telemetry monitoring when
 #### Scenario: Clean termination on interrupt
 - **WHEN** the user interrupts the running monitoring session with Ctrl+C (SIGINT)
 - **THEN** the system restores terminal cursor and attributes and exits with code 0 without background hangs.
+
+### Requirement: Low-Level Assembly Primitives & Timing Diagnostics
+The system SHALL provide low-level x86_64 CPUID feature interrogation and cycle-accurate RDTSC bus latency timing.
+
+#### Scenario: CPUID hardware discovery
+- **WHEN** system diagnostics or hardware interrogation is executed
+- **THEN** the system directly invokes x86_64 CPUID instructions to extract CPU brand string, digital thermal sensor (DTS) flags, and hardware P-states (HWP/Speed Shift).
+
+#### Scenario: Sub-microsecond ACPI latency measurement
+- **WHEN** diagnostics are run
+- **THEN** the system measures sysfs read latency via serializing RDTSC cycle counters and reports access duration in nanoseconds.
+
+### Requirement: Shell & Command-Line Integration
+The system SHALL provide native command completion definitions for Bash, Zsh, and Fish, alongside Unix manual pages.
+
+#### Scenario: Shell command completion
+- **WHEN** the user triggers tab-completion for `awccctl` in Bash, Zsh, or Fish
+- **THEN** the shell completes subcommands, profile names, fan controls, and flags dynamically.

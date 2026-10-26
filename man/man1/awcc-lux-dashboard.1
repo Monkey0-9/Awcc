@@ -1,0 +1,37 @@
+.TH AWCC-LUX-DASHBOARD 1 "October 2026" "AWCC Linux 0.3.0" "User Commands"
+.SH NAME
+awcc-lux-dashboard \- Cybernetic TrueColor Telemetry Cockpit for AWCC Linux
+.SH SYNOPSIS
+.B awcc-lux-dashboard.py
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B awcc-lux-dashboard.py
+is an interactive, responsive terminal cockpit featuring cinema-grade 24-bit TrueColor
+color grading, smooth thermal gradients, dynamic terminal geometry adaptation, and real-time
+telemetry tracking.
+.SH KEYBOARD CONTROLS
+.TP
+.B 1\(en6
+Instantly switch performance profiles (1: Battery, 2: Quiet, 3: Balance, 4: Mid, 5: High, 6: Ultra).
+.TP
+.B F9, G
+Toggle Game Shift (G-Mode) instantaneous cooling turbine overboost.
+.TP
+.B C, T
+Cycle visual themes (Cryo-Tech Pro, Cyberpunk 2077, Dark Core OLED, Solar Flare, Matrix Emerald, Vaporwave Sunset).
+.TP
+.B Q, Esc, Ctrl+C
+Cleanly restore terminal attributes and exit.
+.SH OPTIONS
+.TP
+.B \-\-theme <\fINAME\fR>
+Launch directly using the specified color theme.
+.TP
+.B \-\-snapshot, \-s
+Render a single frame snapshot and exit immediately (useful for scripts and fast checks).
+.TP
+.B \-\-help, \-h
+Print help message and exit.
+.SH SEE ALSO
+.BR awccctl (1),
+.BR awcc-mode (1)

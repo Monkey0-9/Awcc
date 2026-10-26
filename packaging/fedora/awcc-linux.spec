@@ -59,6 +59,18 @@ install -m 0644 packaging/icons/awcc-gui.svg $RPM_BUILD_ROOT%{_datadir}/icons/hi
 install -d $RPM_BUILD_ROOT%{_datadir}/polkit-1/actions
 install -m 0644 packaging/io.github.monkey0_9.awcc.policy $RPM_BUILD_ROOT%{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
 
+# Shell Completions
+install -d $RPM_BUILD_ROOT%{_datadir}/bash-completion/completions
+install -m 0644 completions/bash/awccctl $RPM_BUILD_ROOT%{_datadir}/bash-completion/completions/awccctl
+install -d $RPM_BUILD_ROOT%{_datadir}/zsh/site-functions
+install -m 0644 completions/zsh/_awccctl $RPM_BUILD_ROOT%{_datadir}/zsh/site-functions/_awccctl
+install -d $RPM_BUILD_ROOT%{_datadir}/fish/vendor_completions.d
+install -m 0644 completions/fish/awccctl.fish $RPM_BUILD_ROOT%{_datadir}/fish/vendor_completions.d/awccctl.fish
+
+# Man Pages
+install -d $RPM_BUILD_ROOT%{_mandir}/man1
+install -m 0644 man/man1/*.1 $RPM_BUILD_ROOT%{_mandir}/man1/
+
 %check
 desktop-file-validate $RPM_BUILD_ROOT%{_datadir}/applications/awcc-gui.desktop || true
 
@@ -84,6 +96,10 @@ desktop-file-validate $RPM_BUILD_ROOT%{_datadir}/applications/awcc-gui.desktop |
 %{_datadir}/applications/awcc-gui.desktop
 %{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
 %{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
+%{_datadir}/bash-completion/completions/awccctl
+%{_datadir}/zsh/site-functions/_awccctl
+%{_datadir}/fish/vendor_completions.d/awccctl.fish
+%{_mandir}/man1/*.1*
 
 %changelog
 * Mon Oct 26 2026 AWCC Linux Team <support@awcc-linux.org> - 0.3.0-1

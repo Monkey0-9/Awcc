@@ -43,6 +43,16 @@ package() {
     # PolicyKit Policy
     install -Dm644 packaging/io.github.monkey0_9.awcc.policy "$pkgdir/usr/share/polkit-1/actions/io.github.monkey0_9.awcc.policy"
 
+    # Shell Completions
+    install -Dm644 completions/bash/awccctl "$pkgdir/usr/share/bash-completion/completions/awccctl"
+    install -Dm644 completions/zsh/_awccctl "$pkgdir/usr/share/zsh/site-functions/_awccctl"
+    install -Dm644 completions/fish/awccctl.fish "$pkgdir/usr/share/fish/vendor_completions.d/awccctl.fish"
+
+    # Man Pages
+    for mp in man/man1/*.1; do
+        install -Dm644 "$mp" "$pkgdir/usr/share/man/man1/$(basename "$mp")"
+    done
+
     # Systemd Service
     install -Dm644 systemd/awccd.service "$pkgdir/usr/lib/systemd/system/awccd.service"
 

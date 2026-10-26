@@ -54,6 +54,18 @@ install -m 0644 packaging/icons/awcc-gui.svg $RPM_BUILD_ROOT%{_datadir}/icons/hi
 install -d $RPM_BUILD_ROOT%{_datadir}/polkit-1/actions
 install -m 0644 packaging/io.github.monkey0_9.awcc.policy $RPM_BUILD_ROOT%{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
 
+# Shell Completions
+install -d $RPM_BUILD_ROOT%{_datadir}/bash-completion/completions
+install -m 0644 completions/bash/awccctl $RPM_BUILD_ROOT%{_datadir}/bash-completion/completions/awccctl
+install -d $RPM_BUILD_ROOT%{_datadir}/zsh/site-functions
+install -m 0644 completions/zsh/_awccctl $RPM_BUILD_ROOT%{_datadir}/zsh/site-functions/_awccctl
+install -d $RPM_BUILD_ROOT%{_datadir}/fish/vendor_completions.d
+install -m 0644 completions/fish/awccctl.fish $RPM_BUILD_ROOT%{_datadir}/fish/vendor_completions.d/awccctl.fish
+
+# Man Pages
+install -d $RPM_BUILD_ROOT%{_mandir}/man1
+install -m 0644 man/man1/*.1 $RPM_BUILD_ROOT%{_mandir}/man1/
+
 # Systemd Units
 install -d $RPM_BUILD_ROOT%{_unitdir}
 install -m 0644 systemd/awccd.service $RPM_BUILD_ROOT%{_unitdir}/awccd.service
@@ -98,6 +110,10 @@ fi
 %{_datadir}/applications/awcc-gui.desktop
 %{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
 %{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
+%{_datadir}/bash-completion/completions/awccctl
+%{_datadir}/zsh/site-functions/_awccctl
+%{_datadir}/fish/vendor_completions.d/awccctl.fish
+%{_mandir}/man1/*.1*
 /usr/src/alienware-wmi-%{version}
 
 %changelog

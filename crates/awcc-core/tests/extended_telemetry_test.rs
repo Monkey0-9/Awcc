@@ -74,6 +74,8 @@ fn test_extended_telemetry_serialization() {
             battery_status: Some("Full".to_string()),
             charge_rate_watts: None,
         }),
+        hw_features: None,
+        bus_latency_nanos: Some(1500),
     };
 
     let json = serde_json::to_string_pretty(&tele).expect("Must serialize to JSON");

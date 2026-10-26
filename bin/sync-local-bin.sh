@@ -37,7 +37,7 @@ chmod +x \
     "${LOCAL_BIN}/awcc-monitor" \
     "${LOCAL_BIN}/awcc-gameshift-toggle"
 
-# Install desktop icon and entry
+# Install desktop icon, entry, shell completions, and man pages
 mkdir -p "${HOME}/.local/share/applications" "${HOME}/.local/share/icons/hicolor/scalable/apps"
 if [[ -f "${ROOT_DIR}/packaging/awcc-gui.desktop" ]]; then
     cp -f "${ROOT_DIR}/packaging/awcc-gui.desktop" "${HOME}/.local/share/applications/awcc-gui.desktop"
@@ -45,6 +45,18 @@ fi
 if [[ -f "${ROOT_DIR}/packaging/icons/awcc-gui.svg" ]]; then
     cp -f "${ROOT_DIR}/packaging/icons/awcc-gui.svg" "${HOME}/.local/share/icons/hicolor/scalable/apps/awcc-gui.svg"
 fi
+
+mkdir -p "${HOME}/.local/share/bash-completion/completions"
+if [[ -f "${ROOT_DIR}/completions/bash/awccctl" ]]; then
+    cp -f "${ROOT_DIR}/completions/bash/awccctl" "${HOME}/.local/share/bash-completion/completions/awccctl"
+fi
+
+mkdir -p "${HOME}/.local/share/man/man1"
+for mp in awccctl.1 awcc-lux-dashboard.1 awcc-mode.1; do
+    if [[ -f "${ROOT_DIR}/man/man1/${mp}" ]]; then
+        cp -f "${ROOT_DIR}/man/man1/${mp}" "${HOME}/.local/share/man/man1/${mp}"
+    fi
+done
 
 # 4. Sync profile actuation shortcuts
 echo "[4/4] Synchronizing mode shortcuts (awcc-quiet, awcc-balance, etc.)..."

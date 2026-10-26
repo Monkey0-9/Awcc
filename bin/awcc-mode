@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Clean terminal restoration trap
+cleanup() {
+    printf "\x1b[?25h\x1b[0m" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM HUP
+
 MODE="${1:-}"
 FLAG="${2:-}"
 

@@ -1,0 +1,53 @@
+#compdef awccctl
+
+_awccctl() {
+    local -a subcommands
+    subcommands=(
+        'status:Query comprehensive hardware performance and thermal status'
+        'profile:Get or set platform performance profile'
+        'fan:Manage fan speed and boost offset levels'
+        'gmode:Actuate or query Game Shift (G-Mode) status'
+        'track:Stream continuous live hardware telemetry'
+        'monitor:Alias for track command'
+        'capabilities:Inspect hardware capabilities and provider detection'
+        'doctor:Run system diagnostics, security audit, and low-level CPUID/RDTSC checks'
+        'verify:Run step calibration ladder across cooling fans'
+    )
+
+    _arguments -C \
+        '(-h --help)'{-h,--help}'[Show help information]' \
+        '(-V --version)'{-V,--version}'[Print version information]' \
+        '1: :->command' \
+        '*:: :->args'
+
+    case $state in
+        command)
+            _describe -t subcommands 'awccctl subcommands' subcommands
+            ;;
+        args)
+            case $words[1] in
+                profile)
+                    _values 'profiles' 'quiet' 'balanced' 'performance' 'low-power' 'custom'
+                    ;;
+                fan)
+                    _values 'fan commands' 'set' 'boost' 'max' 'release'
+                    ;;
+                gmode)
+                    _values 'gmode actions' 'status' 'on' 'off' 'toggle'
+                    ;;
+                track|monitor)
+                    _arguments \
+                        '--interval[Sampling interval in seconds]:seconds:' \
+                        '--json[Output telemetry as JSON lines]' \
+                        '--once[Output single telemetry snapshot and exit]'
+                    ;;
+                status|capabilities)
+                    _arguments \
+                        '--json[Format output as structured JSON]'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_awccctl "$@"

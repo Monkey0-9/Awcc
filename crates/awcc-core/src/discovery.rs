@@ -920,6 +920,21 @@ impl HardwareManager {
         })
     }
 
+    pub fn measure_sysfs_bus_latency(&self) -> u64 {
+        let path = self.sysfs_root.join("sys/firmware/acpi/platform_profile");
+        let target = if path.exists() {
+            path
+        } else {
+            self.sysfs_root.join("proc/stat")
+        };
+
+        let (_, cycles) = crate::hw::rdtsc::measure_cycles(|| {
+            let _ = fs::read(&target);
+        });
+
+        crate::hw::rdtsc::cycles_to_nanos(cycles)
+    }
+
     pub fn get_telemetry(&self) -> SystemTelemetry {
         let (dmi_vendor, dmi_product, bios_version) = self.get_dmi_info();
         let (active_platform_profile, platform_profile_choices, platform_profile_provider) =
@@ -931,6 +946,8 @@ impl HardwareManager {
         let gpu = self.read_gpu_compute_telemetry();
         let memory = self.read_memory_telemetry();
         let power = self.read_power_telemetry();
+        let hw_features = Some(crate::hw::cpuid::probe_cpu_features());
+        let bus_latency_nanos = Some(self.measure_sysfs_bus_latency());
 
         SystemTelemetry {
             dmi_vendor,
@@ -954,6 +971,8 @@ impl HardwareManager {
             gpu,
             memory,
             power,
+            hw_features,
+            bus_latency_nanos,
         }
     }
 

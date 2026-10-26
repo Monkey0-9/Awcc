@@ -116,4 +116,8 @@ pub struct SystemTelemetry {
     pub memory: Option<MemoryTelemetry>,
     #[serde(default)]
     pub power: Option<PowerTelemetry>,
+    #[serde(default)]
+    pub hw_features: Option<crate::hw::CpuHardwareFeatures>,
+    #[serde(default)]
+    pub bus_latency_nanos: Option<u64>,
 }

@@ -34,5 +34,17 @@ override_dh_auto_install:
 	install -d debian/awcc-linux/usr/share/polkit-1/actions
 	install -m 0644 packaging/io.github.monkey0_9.awcc.policy debian/awcc-linux/usr/share/polkit-1/actions/io.github.monkey0_9.awcc.policy
 
+	install -d debian/awcc-linux/usr/share/bash-completion/completions
+	install -m 0644 completions/bash/awccctl debian/awcc-linux/usr/share/bash-completion/completions/awccctl
+
+	install -d debian/awcc-linux/usr/share/zsh/site-functions
+	install -m 0644 completions/zsh/_awccctl debian/awcc-linux/usr/share/zsh/site-functions/_awccctl
+
+	install -d debian/awcc-linux/usr/share/fish/vendor_completions.d
+	install -m 0644 completions/fish/awccctl.fish debian/awcc-linux/usr/share/fish/vendor_completions.d/awccctl.fish
+
+	install -d debian/awcc-linux/usr/share/man/man1
+	install -m 0644 man/man1/*.1 debian/awcc-linux/usr/share/man/man1/
+
 	install -d debian/awcc-linux/lib/systemd/system
 	install -m 0644 systemd/awccd.service debian/awcc-linux/lib/systemd/system/awccd.service

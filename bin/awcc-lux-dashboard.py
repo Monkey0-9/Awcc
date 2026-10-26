@@ -81,13 +81,49 @@ def fit(text, width, align='left'):
     else:
         return text + (' ' * pad)
 
-# ANSI Basics
+# ANSI Basics & Terminal Capability Detection
 RESET         = '\033[0m'
 BOLD          = '\033[1m'
 DIM           = '\033[2m'
-WHITE_BOLD    = '\033[1;38;2;255;255;255m'
-MUTED_GRAY    = '\033[38;2;125;140;160m'
-TEXT_DIM      = '\033[38;2;165;180;195m'
+
+def detect_color_support():
+    term = os.environ.get("TERM", "").lower()
+    colorterm = os.environ.get("COLORTERM", "").lower()
+    if term == "dumb" or os.environ.get("NO_COLOR"):
+        return False, False
+    has_tc = colorterm in ("truecolor", "24bit") or "direct" in term or any(k in term for k in ("kitty", "alacritty", "foot", "wezterm", "xterm-ghostty"))
+    has_256 = has_tc or "256color" in term or "xterm" in term
+    return has_tc, has_256
+
+HAS_TRUECOLOR, HAS_256_COLOR = detect_color_support()
+
+def rgb_to_256(r, g, b):
+    if r == g == b:
+        if r < 8: return 16
+        if r > 248: return 231
+        return round(((r - 8) / 247) * 23) + 232
+    return 16 + (36 * round(r / 255 * 5)) + (6 * round(g / 255 * 5)) + round(b / 255 * 5)
+
+def ansi_rgb_fg(r, g, b, bold=False):
+    prefix = "\033[1;" if bold else "\033["
+    if HAS_TRUECOLOR:
+        return f"{prefix}38;2;{r};{g};{b}m"
+    elif HAS_256_COLOR:
+        return f"{prefix}38;5;{rgb_to_256(r, g, b)}m"
+    else:
+        return f"{prefix}37m"
+
+def ansi_rgb_bg(r, g, b):
+    if HAS_TRUECOLOR:
+        return f"\033[48;2;{r};{g};{b}m"
+    elif HAS_256_COLOR:
+        return f"\033[48;5;{rgb_to_256(r, g, b)}m"
+    else:
+        return "\033[40m"
+
+WHITE_BOLD    = ansi_rgb_fg(255, 255, 255, bold=True)
+MUTED_GRAY    = ansi_rgb_fg(125, 140, 160)
+TEXT_DIM      = ansi_rgb_fg(165, 180, 195)
 
 # --- TrueColor Color-Grading Theme Engine ---
 class ColorTheme:
@@ -96,19 +132,19 @@ class ColorTheme:
                  badge_bg_rgb, badge_fg_rgb):
         self.key = key
         self.name = name
-        self.border = f"\033[38;2;{border_rgb[0]};{border_rgb[1]};{border_rgb[2]}m"
-        self.border_corner = f"\033[1;38;2;{accent_rgb[0]};{accent_rgb[1]};{accent_rgb[2]}m"
-        self.accent = f"\033[38;2;{accent_rgb[0]};{accent_rgb[1]};{accent_rgb[2]}m"
-        self.accent_bright = f"\033[1;38;2;{accent_rgb[0]};{accent_rgb[1]};{accent_rgb[2]}m"
-        self.title = f"\033[1;38;2;{title_rgb[0]};{title_rgb[1]};{title_rgb[2]}m"
-        self.track = f"\033[38;2;{track_rgb[0]};{track_rgb[1]};{track_rgb[2]}m"
+        self.border = ansi_rgb_fg(border_rgb[0], border_rgb[1], border_rgb[2])
+        self.border_corner = ansi_rgb_fg(accent_rgb[0], accent_rgb[1], accent_rgb[2], bold=True)
+        self.accent = ansi_rgb_fg(accent_rgb[0], accent_rgb[1], accent_rgb[2])
+        self.accent_bright = ansi_rgb_fg(accent_rgb[0], accent_rgb[1], accent_rgb[2], bold=True)
+        self.title = ansi_rgb_fg(title_rgb[0], title_rgb[1], title_rgb[2], bold=True)
+        self.track = ansi_rgb_fg(track_rgb[0], track_rgb[1], track_rgb[2])
         self.stops_cool = stops_cool
         self.stops_cpu = stops_cpu
         self.stops_gpu = stops_gpu
         self.stops_vram = stops_vram
         self.stops_ram = stops_ram
-        self.badge_bg = f"\033[48;2;{badge_bg_rgb[0]};{badge_bg_rgb[1]};{badge_bg_rgb[2]}m"
-        self.badge_fg = f"\033[1;38;2;{badge_fg_rgb[0]};{badge_fg_rgb[1]};{badge_fg_rgb[2]}m"
+        self.badge_bg = ansi_rgb_bg(badge_bg_rgb[0], badge_bg_rgb[1], badge_bg_rgb[2])
+        self.badge_fg = ansi_rgb_fg(badge_fg_rgb[0], badge_fg_rgb[1], badge_fg_rgb[2], bold=True)
 
 THEMES = {
     "cryo": ColorTheme(
@@ -300,7 +336,7 @@ def render_gauge(val, max_val, width, color_stops=None, theme=None):
                     int(s1_c[2] + (s2_c[2] - s1_c[2]) * local_t)
                 )
                 break
-        chars.append(f"\033[38;2;{c[0]};{c[1]};{c[2]}m█")
+        chars.append(f"{ansi_rgb_fg(c[0], c[1], c[2])}█")
 
     chars.append(f"{t.track}{'░' * empty}{RESET}")
     return "".join(chars)
@@ -911,31 +947,31 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
 
     if b1 >= 240:
         mode_label = "ULTRA (100% Boost)"
-        mode_color = f"\033[1;38;2;255;45;75m"
+        mode_color = ansi_rgb_fg(255, 45, 75, bold=True)
     elif b1 >= 75:
         mode_label = "HIGH (85% Boost)"
-        mode_color = f"\033[1;38;2;255;120;0m"
+        mode_color = ansi_rgb_fg(255, 120, 0, bold=True)
     elif b1 >= 50:
         mode_label = "MID (65% Boost)"
-        mode_color = f"\033[1;38;2;255;190;0m"
+        mode_color = ansi_rgb_fg(255, 190, 0, bold=True)
     elif b1 >= 30:
         mode_label = "BALANCE (40% Boost)"
         mode_color = theme.accent_bright
     elif b1 >= 15:
         mode_label = "QUIET (20% Boost)"
-        mode_color = f"\033[1;38;2;0;255;170m"
+        mode_color = ansi_rgb_fg(0, 255, 170, bold=True)
     elif b1 > 0:
         mode_label = "BATTERY (10% Boost)"
-        mode_color = f"\033[1;38;2;180;100;255m"
+        mode_color = ansi_rgb_fg(180, 100, 255, bold=True)
     elif has_controllable_fans:
         mode_label = "PASSIVE (0% Boost)"
-        mode_color = f"\033[1;38;2;180;100;255m"
+        mode_color = ansi_rgb_fg(180, 100, 255, bold=True)
     else:
         mode_label = f"PROFILE: {profile.upper()}"
         mode_color = theme.accent_bright
 
     if gmode_active:
-        badge = f"\033[1;48;2;255;35;65m\033[38;2;255;255;255m  G-MODE EXTREME  \033[0m"
+        badge = f"{ansi_rgb_bg(255, 35, 65)}{ansi_rgb_fg(255, 255, 255, bold=True)}  G-MODE EXTREME  \033[0m"
     elif has_controllable_fans:
         badge = f"{theme.badge_bg}{theme.badge_fg}  ○ HYBRID QUIET  \033[0m"
     else:
@@ -945,10 +981,10 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
 
     # Smooth thermal color ramp
     def temp_color(t):
-        if t >= 85: return f"\033[1;38;2;255;45;75m"
-        if t >= 72: return f"\033[1;38;2;255;170;0m"
-        if t >= 58: return f"\033[1;38;2;0;255;170m"
-        return f"\033[38;2;0;220;255m"
+        if t >= 85: return ansi_rgb_fg(255, 45, 75, bold=True)
+        if t >= 72: return ansi_rgb_fg(255, 170, 0, bold=True)
+        if t >= 58: return ansi_rgb_fg(0, 255, 170, bold=True)
+        return ansi_rgb_fg(0, 220, 255)
 
     t_cpu_col = temp_color(cpu_temp)
     gauge_cpu = render_gauge(cpu_usage, 100, gauge_width, theme.stops_cpu, theme)
@@ -990,9 +1026,9 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
     now = time.time()
     if LAST_STATUS_MSG and (now - LAST_STATUS_TIMESTAMP < 4.0):
         if LAST_STATUS_IS_ERROR:
-            msg = f"\033[1;48;2;255;45;75m\033[38;2;255;255;255m  [!] {LAST_STATUS_MSG}  \033[0m"
+            msg = f"{ansi_rgb_bg(255, 45, 75)}{ansi_rgb_fg(255, 255, 255, bold=True)}  [!] {LAST_STATUS_MSG}  \033[0m"
         else:
-            msg = f"\033[1;48;2;0;140;100m\033[38;2;255;255;255m  ✓ {LAST_STATUS_MSG}  \033[0m"
+            msg = f"{ansi_rgb_bg(0, 140, 100)}{ansi_rgb_fg(255, 255, 255, bold=True)}  ✓ {LAST_STATUS_MSG}  \033[0m"
         rows.append(make_row(align_three("", msg, "", inner_width), inner_width, theme))
         rows.append(div_single)
 

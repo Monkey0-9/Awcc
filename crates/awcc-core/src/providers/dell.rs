@@ -479,6 +479,8 @@ impl HardwareProvider for DellAwccProvider {
             gpu: None,
             memory: None,
             power: None,
+            hw_features: None,
+            bus_latency_nanos: None,
         }
     }
 

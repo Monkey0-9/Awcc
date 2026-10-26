@@ -281,6 +281,8 @@ impl HardwareProvider for GenericLinuxProvider {
             gpu: None,
             memory: None,
             power: None,
+            hw_features: None,
+            bus_latency_nanos: None,
         }
     }
 

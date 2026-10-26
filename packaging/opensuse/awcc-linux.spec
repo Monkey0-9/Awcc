@@ -69,6 +69,18 @@ install -m 0644 packaging/icons/awcc-gui.svg %{buildroot}%{_datadir}/icons/hicol
 install -d %{buildroot}%{_datadir}/polkit-1/actions
 install -m 0644 packaging/io.github.monkey0_9.awcc.policy %{buildroot}%{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
 
+# Shell Completions
+install -d %{buildroot}%{_datadir}/bash-completion/completions
+install -m 0644 completions/bash/awccctl %{buildroot}%{_datadir}/bash-completion/completions/awccctl
+install -d %{buildroot}%{_datadir}/zsh/site-functions
+install -m 0644 completions/zsh/_awccctl %{buildroot}%{_datadir}/zsh/site-functions/_awccctl
+install -d %{buildroot}%{_datadir}/fish/vendor_completions.d
+install -m 0644 completions/fish/awccctl.fish %{buildroot}%{_datadir}/fish/vendor_completions.d/awccctl.fish
+
+# Man Pages
+install -d %{buildroot}%{_mandir}/man1
+install -m 0644 man/man1/*.1 %{buildroot}%{_mandir}/man1/
+
 %pre
 %service_add_pre awccd.service
 
@@ -94,6 +106,10 @@ install -m 0644 packaging/io.github.monkey0_9.awcc.policy %{buildroot}%{_datadir
 %{_datadir}/applications/awcc-gui.desktop
 %{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
 %{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
+%{_datadir}/bash-completion/completions/awccctl
+%{_datadir}/zsh/site-functions/_awccctl
+%{_datadir}/fish/vendor_completions.d/awccctl.fish
+%{_mandir}/man1/*.1*
 
 %changelog
 * Mon Oct 26 2026 AWCC Linux Team <support@awcc-linux.org>

@@ -1,0 +1,67 @@
+# Bash completion script for awccctl
+# Generated for AWCC Linux Hardware Control Suite
+
+_awccctl() {
+    local cur prev words cword
+    _init_completion || return
+
+    local subcommands="status profile fan gmode track monitor capabilities doctor verify help"
+    local profiles="quiet balanced performance low-power custom"
+    local fan_cmds="set boost max release"
+
+    if [[ $cword -eq 1 ]]; then
+        COMPREPLY=( $(compgen -W "$subcommands --help --version" -- "$cur") )
+        return 0
+    fi
+
+    case "${words[1]}" in
+        profile)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$profiles" -- "$cur") )
+            else
+                COMPREPLY=( $(compgen -W "--watch -w --monitor -m --interval" -- "$cur") )
+            fi
+            return 0
+            ;;
+        fan)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "$fan_cmds" -- "$cur") )
+            elif [[ $cword -eq 3 ]]; then
+                case "${words[2]}" in
+                    set|boost)
+                        COMPREPLY=( $(compgen -W "1 2" -- "$cur") )
+                        ;;
+                esac
+            fi
+            return 0
+            ;;
+        gmode)
+            if [[ $cword -eq 2 ]]; then
+                COMPREPLY=( $(compgen -W "status on off toggle" -- "$cur") )
+            else
+                COMPREPLY=( $(compgen -W "--watch -w --monitor -m --interval" -- "$cur") )
+            fi
+            return 0
+            ;;
+        track|monitor)
+            COMPREPLY=( $(compgen -W "--interval --json --once" -- "$cur") )
+            return 0
+            ;;
+        status|capabilities)
+            COMPREPLY=( $(compgen -W "--json" -- "$cur") )
+            return 0
+            ;;
+        doctor)
+            COMPREPLY=( $(compgen -W "--help" -- "$cur") )
+            return 0
+            ;;
+        verify)
+            COMPREPLY=( $(compgen -W "--step-duration" -- "$cur") )
+            return 0
+            ;;
+        *)
+            ;;
+    esac
+}
+
+complete -F _awccctl awccctl
