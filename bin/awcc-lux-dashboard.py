@@ -216,6 +216,57 @@ def find_hwmon_by_name(target_name):
 def get_hwmon():
     return find_hwmon_by_name("alienware_wmi")
 
+def get_platform_profile_path():
+    class_dir = "/sys/class/platform-profile"
+    if os.path.isdir(class_dir):
+        # 1. Prefer alienware-wmi class provider
+        for entry in sorted(os.listdir(class_dir)):
+            p = os.path.join(class_dir, entry)
+            name_file = os.path.join(p, "name")
+            if os.path.isfile(name_file):
+                try:
+                    with open(name_file, "r") as f:
+                        if f.read().strip() == "alienware-wmi":
+                            prof = os.path.join(p, "profile")
+                            if os.path.isfile(prof):
+                                return prof
+                except Exception:
+                    pass
+        # 2. Fall back to any provider in class_dir
+        for entry in sorted(os.listdir(class_dir)):
+            prof = os.path.join(class_dir, entry, "profile")
+            if os.path.isfile(prof):
+                return prof
+    # 3. Fall back to firmware acpi node
+    acpi_node = "/sys/firmware/acpi/platform_profile"
+    if os.path.isfile(acpi_node):
+        return acpi_node
+    return None
+
+def write_sysfs_value(path, value):
+    """Write value to sysfs path; falls back to sudo tee if permission denied."""
+    try:
+        with open(path, "w") as f:
+            f.write(str(value))
+        return True, None
+    except PermissionError:
+        try:
+            cmd = ["sudo", "tee", path]
+            res = subprocess.run(
+                cmd,
+                input=str(value),
+                text=True,
+                capture_output=True,
+                timeout=2
+            )
+            if res.returncode == 0:
+                return True, None
+            return False, f"sudo error ({res.returncode}): {res.stderr.strip()}"
+        except Exception as e:
+            return False, f"sudo failed: {e}"
+    except Exception as e:
+        return False, str(e)
+
 def get_fan_max(aw_hwmon):
     m1, m2 = 4800, 4800
     if aw_hwmon and os.path.isdir(aw_hwmon):
@@ -430,29 +481,30 @@ def apply_mode_direct(mode_idx, aw_hwmon):
 
     errs = []
 
-    # 1. Apply ACPI platform profile directly to kernel
-    try:
-        with open("/sys/firmware/acpi/platform_profile", "w") as f:
-            f.write(cfg["profile"])
-    except Exception as e:
-        errs.append(f"platform_profile: {e}")
+    # 1. Apply ACPI platform profile dynamically
+    pprof_file = get_platform_profile_path()
+    if pprof_file:
+        ok, err = write_sysfs_value(pprof_file, cfg["profile"])
+        if not ok:
+            errs.append(f"platform_profile: {err}")
+    else:
+        errs.append("platform_profile not found")
 
     # 2. Apply fan boosts directly to hardware nodes
     if aw_hwmon and os.path.isdir(aw_hwmon):
         for b_name in ["fan1_boost", "fan2_boost"]:
             b_path = os.path.join(aw_hwmon, b_name)
-            try:
-                with open(b_path, "w") as f:
-                    f.write(str(cfg["boost"]))
-            except Exception as e:
-                errs.append(f"{b_name}: {e}")
+            if os.path.isfile(b_path):
+                ok, err = write_sysfs_value(b_path, cfg["boost"])
+                if not ok:
+                    errs.append(f"{b_name}: {err}")
     else:
         errs.append("alienware_wmi hwmon not found")
 
     # 3. Synchronize Game Shift state file
     try:
         with open("/tmp/.awcc_gmode_state", "w") as f:
-            f.write("ON\n" if cfg["boost"] >= 240 else "OFF\n")
+            f.write("ON\n" if cfg["boost"] == 255 else "OFF\n")
     except Exception:
         pass
 
@@ -468,7 +520,7 @@ def apply_mode_direct(mode_idx, aw_hwmon):
 
     # 4. Trigger non-blocking visual/audio feedback
     try:
-        is_turbo = (cfg["boost"] >= 240)
+        is_turbo = (cfg["boost"] == 255)
         icon = "preferences-system-performance" if is_turbo else "preferences-system-power"
         sound = "service-login" if is_turbo else "dialog-information"
         subprocess.Popen(
@@ -487,14 +539,25 @@ def apply_mode_direct(mode_idx, aw_hwmon):
     return True
 
 def toggle_gameshift_direct(aw_hwmon):
-    b1 = 0
-    if aw_hwmon and os.path.isdir(aw_hwmon):
+    # Check state file or hardware boost
+    is_active = False
+    try:
+        if os.path.isfile("/tmp/.awcc_gmode_state"):
+            with open("/tmp/.awcc_gmode_state", "r") as f:
+                if f.read().strip() == "ON":
+                    is_active = True
+    except Exception:
+        pass
+
+    if not is_active and aw_hwmon and os.path.isdir(aw_hwmon):
         try:
             with open(os.path.join(aw_hwmon, "fan1_boost"), "r") as f:
-                b1 = int(f.read().strip())
+                if int(f.read().strip()) == 255:
+                    is_active = True
         except Exception:
             pass
-    if b1 >= 240:
+
+    if is_active:
         apply_mode_direct(3, aw_hwmon)
     else:
         apply_mode_direct(6, aw_hwmon)
@@ -524,9 +587,9 @@ def decode_key(text):
         return 'REFRESH'
     return None
 
-def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status):
+def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status, max1=4800, max2=4800):
     box_width, inner_width, gauge_width, term_rows = get_box_dimensions()
-    gmode_active = (b1 >= 240)
+    gmode_active = (b1 == 255)
 
     if b1 >= 240:
         mode_label = "ULTRA (100% Boost)"
@@ -564,8 +627,9 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
         (0.8, (255, 190, 0)),
         (1.0, (255, 45, 75))
     ]
-    gauge_f1 = render_gauge(r1, 5029, gauge_width, fan_stops)
-    gauge_f2 = render_gauge(r2, 5029, gauge_width, fan_stops)
+    max_ceiling = max(max1, max2)
+    gauge_f1 = render_gauge(r1, max1, gauge_width, fan_stops)
+    gauge_f2 = render_gauge(r2, max2, gauge_width, fan_stops)
 
     t_cpu_col = CRIMSON_RED if cpu_temp >= 82 else (SOLAR_AMBER if cpu_temp >= 68 else NEON_GREEN)
     gauge_cpu = render_gauge(cpu_usage, 100, gauge_width)
@@ -624,7 +688,7 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
 
     # 3. Cooling Turbines Block
     cool_left = f"{NEON_GREEN}[ DUAL HIGH-PRESSURE COOLING TURBINES ]{RESET}"
-    cool_right = f"{MUTED_GRAY}MAX CEILING: 5,029 RPM{RESET}"
+    cool_right = f"{MUTED_GRAY}MAX CEILING: {max_ceiling:,d} RPM{RESET}"
     rows.append(make_row(align_split(cool_left, cool_right, inner_width), inner_width))
 
     def boost_pct_str(b):
@@ -638,12 +702,12 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
 
     f1_val = f"{WHITE_BOLD}{r1:4d}RPM{RESET}"
     f1_mid = f"Boost: {CYAN_BRIGHT}{b1:3d} ({boost_pct_str(b1)}){RESET}"
-    f1_right = f"{MUTED_GRAY}Max: 5,029 RPM{RESET}"
+    f1_right = f"{MUTED_GRAY}Max: {max1:,d} RPM{RESET}"
     rows.append(format_telemetry_line(f"{WHITE_BOLD}FAN 1 (CPU){RESET}", gauge_f1, f1_val, f1_mid, f1_right, inner_width, gauge_width))
 
     f2_val = f"{WHITE_BOLD}{r2:4d}RPM{RESET}"
     f2_mid = f"Boost: {CYAN_BRIGHT}{b2:3d} ({boost_pct_str(b2)}){RESET}"
-    f2_right = f"{MUTED_GRAY}Max: 5,029 RPM{RESET}"
+    f2_right = f"{MUTED_GRAY}Max: {max2:,d} RPM{RESET}"
     rows.append(format_telemetry_line(f"{WHITE_BOLD}FAN 2 (GPU){RESET}", gauge_f2, f2_val, f2_mid, f2_right, inner_width, gauge_width))
     rows.append(div_double)
 
@@ -806,16 +870,19 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
 
 def run_snapshot():
     aw_hwmon = get_hwmon()
+    max1, max2 = get_fan_max(aw_hwmon)
     _, _, cpu_usage, cpu_mhz, cpu_temp = get_cpu_info(0, 0)
     gpu = get_gpu_info()
     b1, b2, r1, r2 = get_fans(aw_hwmon)
 
     profile = "balanced"
-    try:
-        with open("/sys/firmware/acpi/platform_profile", "r") as f:
-            profile = f.read().strip()
-    except Exception:
-        pass
+    pprof_file = get_platform_profile_path()
+    if pprof_file and os.path.isfile(pprof_file):
+        try:
+            with open(pprof_file, "r") as f:
+                profile = f.read().strip()
+        except Exception:
+            pass
 
     mem_used, mem_total = 6.4, 15.1
     try:
@@ -829,7 +896,7 @@ def run_snapshot():
         pass
 
     ac_online, bat_pct, bat_status = get_power_info()
-    frame = build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status)
+    frame = build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status, max1, max2)
     print(frame)
 
 def run_continuous():
@@ -918,16 +985,19 @@ def run_continuous():
                 time.sleep(0.75)
 
             # Telemetry collection
+            max1, max2 = get_fan_max(aw_hwmon)
             prev_total, prev_idle, cpu_usage, cpu_mhz, cpu_temp = get_cpu_info(prev_total, prev_idle)
             gpu = get_gpu_info()
             b1, b2, r1, r2 = get_fans(aw_hwmon)
 
             profile = "balanced"
-            try:
-                with open("/sys/firmware/acpi/platform_profile", "r") as f:
-                    profile = f.read().strip()
-            except Exception:
-                pass
+            pprof_file = get_platform_profile_path()
+            if pprof_file and os.path.isfile(pprof_file):
+                try:
+                    with open(pprof_file, "r") as f:
+                        profile = f.read().strip()
+                except Exception:
+                    pass
 
             mem_used, mem_total = 6.4, 15.1
             try:
@@ -942,7 +1012,7 @@ def run_continuous():
 
             ac_online, bat_pct, bat_status = get_power_info()
 
-            frame = build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status)
+            frame = build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status, max1, max2)
 
             # Move cursor to home (1,1) and draw frame without flickering
             sys.stdout.write("\033[H" + frame)

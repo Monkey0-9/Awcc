@@ -1,53 +1,57 @@
-use awcc_core::HardwareManager;
+use awcc_core::{HardwareManager, ThermalGovernor};
 use signal_hook::{consts::TERM_SIGNALS, iterator::Signals};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-pub struct ThermalGovernor {
-    last_boost: u8,
-}
-
-impl Default for ThermalGovernor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ThermalGovernor {
-    pub fn new() -> Self {
-        Self { last_boost: 0 }
-    }
-
-    /// Evaluates piecewise-linear boost curve with anti-hunt hysteresis
-    pub fn compute_boost(&mut self, max_temp: f32) -> u8 {
-        let raw_target = if max_temp < 50.0 {
-            0
-        } else if max_temp >= 85.0 {
-            255
-        } else {
-            let ratio = (max_temp - 50.0) / (85.0 - 50.0);
-            (ratio * 255.0) as u8
-        };
-
-        // Anti-hunt hysteresis: don't ramp down aggressively if drop is minor
-        if raw_target < self.last_boost {
-            // Apply gradual ramp-down damping (max 15 units per cycle)
-            let damped = self.last_boost.saturating_sub(15);
-            self.last_boost = std::cmp::max(damped, raw_target);
-        } else {
-            // Instant ramp-up for immediate cooling protection
-            self.last_boost = raw_target;
-        }
-
-        self.last_boost
-    }
-}
-
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let mut sysfs_root: Option<PathBuf> = None;
+    let mut run_once = false;
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--sysfs-root" => {
+                if i + 1 < args.len() {
+                    sysfs_root = Some(PathBuf::from(&args[i + 1]));
+                    i += 1;
+                } else {
+                    eprintln!("[-] Error: --sysfs-root requires a directory path");
+                    std::process::exit(1);
+                }
+            }
+            "--once" => {
+                run_once = true;
+            }
+            "-h" | "--help" => {
+                println!("AWCC Linux Thermal & Safety Governor Daemon (awccd)");
+                println!("Usage: awccd [OPTIONS]");
+                println!();
+                println!("Options:");
+                println!("  --sysfs-root <PATH>  Specify alternative sysfs root (for testing)");
+                println!("  --once               Run a single evaluation cycle and exit");
+                println!("  -h, --help           Print help");
+                return;
+            }
+            unknown => {
+                eprintln!(
+                    "[-] Error: Unknown option '{}'. Run with --help for usage.",
+                    unknown
+                );
+                std::process::exit(1);
+            }
+        }
+        i += 1;
+    }
+
     println!("[*] Starting awccd (AWCC Linux Autonomous Thermal & Policy Daemon)...");
-    let hw = HardwareManager::new();
+    let hw = match sysfs_root {
+        Some(root) => HardwareManager::with_sysfs_root(root),
+        None => HardwareManager::new(),
+    };
     let mut governor = ThermalGovernor::new();
 
     let term = Arc::new(AtomicBool::new(false));
@@ -65,7 +69,11 @@ fn main() {
         "[+] awccd initialized with multi-sensor thermal governor and failsafe safety policy."
     );
 
-    while !term.load(Ordering::SeqCst) {
+    loop {
+        if term.load(Ordering::SeqCst) {
+            break;
+        }
+
         let thermals = hw.read_thermal_telemetry();
         let cpu_temp = thermals.cpu_core_max_temp.or(thermals.cpu_pkg_temp);
         let gpu_temp = thermals.gpu_temp;
@@ -100,6 +108,10 @@ fn main() {
                 // Release to firmware or log warning
                 eprintln!("[!] Warning: Sensor telemetry unavailable; avoiding fan suppression.");
             }
+        }
+
+        if run_once {
+            break;
         }
 
         thread::sleep(Duration::from_secs(1));

@@ -33,7 +33,7 @@ echo "[+] Current Boost: $(cat "${AW_HWMON}/fan1_boost")/255"
 echo "[*] Monitoring deceleration:"
 for i in {1..5}; do
     sleep 1
-    R1=$(cat "${AW_HWMON}/fan1_input" 2>/dev/null || cat /sys/class/hwmon/hwmon4/fan1_input 2>/dev/null || echo "0")
-    R2=$(cat "${AW_HWMON}/fan2_input" 2>/dev/null || cat /sys/class/hwmon/hwmon4/fan2_input 2>/dev/null || echo "0")
+    R1=$(cat "${AW_HWMON}/fan1_input" 2>/dev/null || echo "0")
+    R2=$(cat "${AW_HWMON}/fan2_input" 2>/dev/null || echo "0")
     printf "  T+%ds: Fan 1: %4s RPM | Fan 2: %4s RPM\n" "$i" "$R1" "$R2"
 done

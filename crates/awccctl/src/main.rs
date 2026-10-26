@@ -178,35 +178,51 @@ fn cmd_status(hw: &HardwareManager, json: bool) {
 
     println!();
     println!(
-        "{:<14} {:<16} {:<16} {:<14} {:<12}",
+        "{:<16} {:<18} {:<18} {:<16} {:<14}",
         "FAN", "REQUESTED BOOST", "READBACK BOOST", "MEASURED RPM", "RATED MAX RPM"
     );
-    println!("{:-<72}", "");
+    println!("{:-<84}", "");
 
     for f in &tele.fans {
-        let rpm_str = match f.current_rpm {
-            Some(rpm) if rpm > 3000 => format!("{} RPM", rpm).bold().green().to_string(),
-            Some(rpm) => format!("{} RPM", rpm),
-            None => "Unavailable".dimmed().to_string(),
-        };
+        let label_str = format!("{:<16}", f.label).bold().to_string();
+        let req_str = format!("{:<18}", format!("{}/255", f.requested_boost));
 
-        let max_str = match f.reported_max_rpm {
-            Some(max) => format!("{} RPM", max),
-            None => "Unknown".dimmed().to_string(),
-        };
-
-        let readback_str = match f.readback_boost {
+        let readback_raw = match f.readback_boost {
             Some(b) => format!("{}/255", b),
-            None => "Unavailable".dimmed().to_string(),
+            None => "Unavailable".to_string(),
+        };
+        let readback_padded = format!("{:<18}", readback_raw);
+        let readback_str = if f.readback_boost.is_none() {
+            readback_padded.dimmed().to_string()
+        } else {
+            readback_padded
+        };
+
+        let rpm_raw = match f.current_rpm {
+            Some(rpm) => format!("{} RPM", rpm),
+            None => "Unavailable".to_string(),
+        };
+        let rpm_padded = format!("{:<16}", rpm_raw);
+        let rpm_str = match f.current_rpm {
+            Some(rpm) if rpm > 3000 => rpm_padded.bold().green().to_string(),
+            Some(_) => rpm_padded,
+            None => rpm_padded.dimmed().to_string(),
+        };
+
+        let max_raw = match f.reported_max_rpm {
+            Some(max) => format!("{} RPM", max),
+            None => "Unknown".to_string(),
+        };
+        let max_padded = format!("{:<14}", max_raw);
+        let max_str = if f.reported_max_rpm.is_none() {
+            max_padded.dimmed().to_string()
+        } else {
+            max_padded
         };
 
         println!(
-            "{:<14} {:<16} {:<16} {:<14} {:<12}",
-            f.label.bold(),
-            format!("{}/255", f.requested_boost),
-            readback_str,
-            rpm_str,
-            max_str
+            "{} {} {} {} {}",
+            label_str, req_str, readback_str, rpm_str, max_str
         );
     }
 }
@@ -236,8 +252,23 @@ fn cmd_profile(hw: &HardwareManager, profile: &str) {
 }
 
 fn cmd_gmode(hw: &HardwareManager, state: Option<String>) {
-    match state.as_deref() {
-        Some("on") | Some("enable") => {
+    let effective_state = match state.as_deref() {
+        Some("toggle") => {
+            let (cur_prof, _, _) = hw.get_platform_profile();
+            let fans = hw.discover_fans();
+            let all_max = !fans.is_empty() && fans.iter().all(|f| f.readback_boost == Some(255));
+            if cur_prof == "performance" && all_max {
+                "off"
+            } else {
+                "on"
+            }
+        }
+        Some(s) => s,
+        None => "query",
+    };
+
+    match effective_state {
+        "on" | "enable" => {
             println!(
                 "{}",
                 "[*] Enabling Game Shift (Performance profile + 255 boost)..."
@@ -252,13 +283,14 @@ fn cmd_gmode(hw: &HardwareManager, state: Option<String>) {
                 );
                 std::process::exit(1);
             }
+            let fans = hw.discover_fans();
             let mut failed = false;
-            for fan in 1..=2 {
-                if let Err(e) = hw.write_fan_boost(fan, 255) {
+            for fan in &fans {
+                if let Err(e) = hw.write_fan_boost(fan.fan_index, 255) {
                     eprintln!(
                         "{} Failed to set boost on fan {}: {}",
                         "[-] Error:".bold().red(),
-                        fan,
+                        fan.fan_index,
                         e
                     );
                     failed = true;
@@ -274,7 +306,7 @@ fn cmd_gmode(hw: &HardwareManager, state: Option<String>) {
                     .green()
             );
         }
-        Some("off") | Some("disable") => {
+        "off" | "disable" => {
             println!(
                 "{}",
                 "[*] Disabling Game Shift (Restoring balanced profile + 0 boost)..."
@@ -289,13 +321,14 @@ fn cmd_gmode(hw: &HardwareManager, state: Option<String>) {
                 );
                 std::process::exit(1);
             }
+            let fans = hw.discover_fans();
             let mut failed = false;
-            for fan in 1..=2 {
-                if let Err(e) = hw.write_fan_boost(fan, 0) {
+            for fan in &fans {
+                if let Err(e) = hw.write_fan_boost(fan.fan_index, 0) {
                     eprintln!(
                         "{} Failed to release fan {}: {}",
                         "[-] Error:".bold().red(),
-                        fan,
+                        fan.fan_index,
                         e
                     );
                     failed = true;

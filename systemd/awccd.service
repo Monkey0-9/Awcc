@@ -1,6 +1,6 @@
 [Unit]
 Description=AWCC Linux Autonomous Fan & Thermal Safety Daemon
-Documentation=https://github.com/awcc-linux/awcc-linux
+Documentation=https://github.com/Monkey0-9/Awcc
 After=network.target systemd-udev-settle.service suspend.target hibernate.target hybrid-sleep.target
 Wants=systemd-udev-settle.service
 
@@ -16,7 +16,7 @@ TimeoutStopSec=5s
 CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_SYS_ADMIN
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/sys/class/hwmon /sys/firmware/acpi /sys/devices/platform /tmp
+ReadWritePaths=/sys/class/hwmon /sys/class/platform-profile /sys/firmware/acpi /sys/devices/platform /tmp
 ProtectHome=read-only
 
 [Install]

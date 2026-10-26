@@ -1,6 +1,6 @@
 # AWCC Linux Hardening & Completion Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Remediate all critical security vulnerabilities (world-writable sysfs), portability flaws (hardcoded user paths), semantic bugs (rhel-performance boost 204 vs 255), false success reporting, telemetry inaccuracies (hardcoded 3600 RPM max, 0°C fallback), and licensing/documentation discrepancies in the AWCC Linux suite.
 
@@ -43,7 +43,7 @@
 - Consumes: `/sys/class/hwmon/hwmon*/fan*_boost`, `/sys/class/platform-profile/platform-profile-*/profile`
 - Produces: Hardened udev rules (group ownership or root-only permissions) and removal of `chmod 0666`
 
-- [ ] **Step 1: Write test script checking for world-writable sysfs rules**
+- [x] **Step 1: Write test script checking for world-writable sysfs rules**
 
 ```bash
 cat << 'EOF' > tests/security_permissions_test.sh
@@ -59,24 +59,24 @@ EOF
 chmod +x tests/security_permissions_test.sh
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `tests/security_permissions_test.sh`
 Expected: FAIL with matches found in `bin/install-system.sh`, `bin/fix-permissions.sh`, `bin/set-fan-speed.sh`, `bin/awcc-mode`, and `packaging/rhel/awcc-linux.spec`.
 
-- [ ] **Step 3: Remove all `chmod 0666` and world-writable udev rules**
+- [x] **Step 3: Remove all `chmod 0666` and world-writable udev rules**
 
 - In `bin/install-system.sh`: Remove the `99-awcc-hwmon.rules` generation that runs `chmod 0666`. Privileged operations must be executed with `sudo` or via `awccd.service`.
 - In `bin/fix-permissions.sh`: Replace `chmod 0666` with a diagnostic script that checks whether the current user has write access or informs the user to run privileged commands via `sudo`.
 - In `bin/set-fan-speed.sh` and `bin/awcc-mode`: Remove `chmod 0666` invocations.
 - In `packaging/rhel/awcc-linux.spec`: Remove `chmod 0666` udev rules.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `tests/security_permissions_test.sh`
 Expected: PASS with "No world-writable permission patterns found."
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add bin/ packaging/ tests/security_permissions_test.sh
@@ -107,7 +107,7 @@ git commit -m "fix(security): remove world-writable chmod 0666 sysfs rules"
 - Consumes: Environment `PATH`, `$(cd "$(dirname "$0")/.." && pwd)`
 - Produces: Portable scripts executable from any directory or user installation
 
-- [ ] **Step 1: Write test script checking for hardcoded user paths**
+- [x] **Step 1: Write test script checking for hardcoded user paths**
 
 ```bash
 cat << 'EOF' > tests/portability_path_test.sh
@@ -122,23 +122,23 @@ EOF
 chmod +x tests/portability_path_test.sh
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `tests/portability_path_test.sh`
 Expected: FAIL with multiple matches in `bin/` scripts.
 
-- [ ] **Step 3: Replace hardcoded paths with portable binary lookups and relative fallbacks**
+- [x] **Step 3: Replace hardcoded paths with portable binary lookups and relative fallbacks**
 
 - For `bin/rhel-*`: Find `awccctl` via `command -v awccctl` in `$PATH`, falling back to `$(dirname "$0")/../target/release/awccctl` or `$(dirname "$0")/../target/debug/awccctl`.
 - For driver scripts (`bin/load-driver.sh`, `bin/run-max-fans.sh`, `bin/install-system.sh`): Use `REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"`.
 - For keybinding scripts: Use `command -v awcc-gameshift-toggle` or `/usr/local/bin/awcc-gameshift-toggle` with `$HOME/.local/bin` fallback.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `tests/portability_path_test.sh`
 Expected: PASS with "No hardcoded home paths found."
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add bin/ tests/portability_path_test.sh
@@ -158,7 +158,7 @@ git commit -m "fix(portability): eliminate hardcoded home-directory paths"
 - Consumes: `awccctl fan set --fan <n> --boost 255`
 - Produces: Boost 255/255 on all controllable fans for `rhel-performance`
 
-- [ ] **Step 1: Write verification test for `rhel-performance`**
+- [x] **Step 1: Write verification test for `rhel-performance`**
 
 ```bash
 cat << 'EOF' > tests/test_performance_semantics.sh
@@ -178,21 +178,21 @@ EOF
 chmod +x tests/test_performance_semantics.sh
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `tests/test_performance_semantics.sh`
 Expected: FAIL with `bin/rhel-performance still passes 204 (80%) instead of 255 (100%)!`
 
-- [ ] **Step 3: Update `bin/rhel-performance` to request 255 boost**
+- [x] **Step 3: Update `bin/rhel-performance` to request 255 boost**
 
 Change `bin/rhel-performance` to invoke helper or `awccctl` with `performance` profile and boost `255` (`"MAX PERFORMANCE (Boost 255/255)"`).
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `tests/test_performance_semantics.sh`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add bin/rhel-performance tests/test_performance_semantics.sh
@@ -214,7 +214,7 @@ git commit -m "fix(fan): set rhel-performance boost to 255 for true maximum fan 
 - Consumes: `Result<(), AwccError>` from `HardwareManager`
 - Produces: Non-zero exit code upon any failed sysfs write, readback mismatch, or missing driver
 
-- [ ] **Step 1: Write test verifying non-zero exit codes on failure**
+- [x] **Step 1: Write test verifying non-zero exit codes on failure**
 
 ```bash
 cat << 'EOF' > tests/test_error_exit_codes.sh
@@ -231,24 +231,24 @@ EOF
 chmod +x tests/test_error_exit_codes.sh
 ```
 
-- [ ] **Step 2: Run test to verify behavior**
+- [x] **Step 2: Run test to verify behavior**
 
 Run: `tests/test_error_exit_codes.sh`
 Expected: PASS or verify where `main.rs` suppresses errors (e.g. `cmd_gmode` using `let _ = ...`, `cmd_fan_release` ignoring error).
 
-- [ ] **Step 3: Refactor `crates/awccctl/src/main.rs` and shell helpers**
+- [x] **Step 3: Refactor `crates/awccctl/src/main.rs` and shell helpers**
 
 - In `cmd_gmode`: Check results of `set_platform_profile` and `write_fan_boost`. If any fail, print error and `std::process::exit(1)`.
 - In `cmd_fan_release`: Check result of `write_fan_boost(fan, 0)`. If any fail, print error and `std::process::exit(1)`.
 - In `bin/run-max-fans.sh`: Don't claim "maximum fan speed achieved and verified" unconditionally; report requested boost readback and current measured RPM honestly. If driver or files are missing, exit 1.
 - In `bin/set-profile-helper.sh`: Propagate failure exit code if writing profile or boost fails.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `tests/test_error_exit_codes.sh`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add bin/run-max-fans.sh bin/set-profile-helper.sh bin/stop-max-fans.sh crates/awccctl/src/main.rs tests/test_error_exit_codes.sh
@@ -270,26 +270,26 @@ git commit -m "fix(cli): propagate errors and eliminate false success messages"
 - Consumes: SPDX identifiers in kernel files (`GPL-2.0-or-later`), Rust crate metadata (`MIT OR Apache-2.0`)
 - Produces: Full legal compliance and provenance inventory
 
-- [ ] **Step 1: Check existing SPDX headers in kernel code**
+- [x] **Step 1: Check existing SPDX headers in kernel code**
 
 Run: `grep -rn "SPDX-License-Identifier" kernel/`
 Expected: Shows GPL-2.0-or-later for alienware-wmi sources.
 
-- [ ] **Step 2: Create root `LICENSE` file**
+- [x] **Step 2: Create root `LICENSE` file**
 
 Add root `LICENSE` explaining the dual licensing structure:
 - Kernel driver files: GNU General Public License v2.0 or later (GPL-2.0-or-later), originating from upstream Linux kernel drivers by Kurt Borja and Mario Limonciello.
 - Rust crates and user utilities: MIT License.
 
-- [ ] **Step 3: Add `docs/provenance-and-licenses.md`**
+- [x] **Step 3: Add `docs/provenance-and-licenses.md`**
 
 Document file-by-file licensing and upstream attribution.
 
-- [ ] **Step 4: Verify license metadata in `packaging/rhel/awcc-linux.spec`**
+- [x] **Step 4: Verify license metadata in `packaging/rhel/awcc-linux.spec`**
 
 Ensure `License: GPL-2.0-or-later AND MIT` matches the file inventory.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add LICENSE LICENSES/ docs/provenance-and-licenses.md packaging/rhel/awcc-linux.spec
@@ -309,7 +309,7 @@ git commit -m "docs(legal): add root LICENSE, license texts, and provenance docu
 - Consumes: `/sys/class/platform-profile/platform-profile-*/name`, `/sys/class/platform-profile/platform-profile-*/choices`, `/sys/class/platform-profile/platform-profile-*/profile`
 - Produces: `HardwareManager::find_platform_profile_node() -> Option<PathBuf>`, dynamic choices validation, verified readback
 
-- [ ] **Step 1: Add unit test in `mock_hardware_tests.rs` for dynamic platform profile discovery**
+- [x] **Step 1: Add unit test in `mock_hardware_tests.rs` for dynamic platform profile discovery**
 
 ```rust
 #[test]
@@ -329,23 +329,23 @@ fn test_dynamic_platform_profile_discovery() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --test mock_hardware_tests`
 Expected: FAIL (method not defined or compilation failure).
 
-- [ ] **Step 3: Implement dynamic platform-profile discovery and profile setting in `discovery.rs`**
+- [x] **Step 3: Implement dynamic platform-profile discovery and profile setting in `discovery.rs`**
 
 - Search `/sys/class/platform-profile/platform-profile-*` for `name` == `alienware-wmi`.
 - Fall back to standard `/sys/firmware/acpi/platform_profile` if class device is absent.
 - Read available choices; validate requested profile against choices before writing; read back and verify.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --test mock_hardware_tests`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/awcc-core/ tests/
@@ -366,7 +366,7 @@ git commit -m "feat(core): discover platform-profile class device by provider id
 - Consumes: `fanN_label`, `fanN_min`, `fanN_max`, `fanN_input`, `tempN_label`, `tempN_input`
 - Produces: Non-zero, truthful `Option<u32>` for max RPM, `Option<f32>` for temperatures, failsafe handling in daemon
 
-- [ ] **Step 1: Write test verifying genuine sensor telemetry and dynamic fan max**
+- [x] **Step 1: Write test verifying genuine sensor telemetry and dynamic fan max**
 
 ```rust
 #[test]
@@ -387,12 +387,12 @@ fn test_dynamic_fan_max_and_label_parsing() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --test mock_hardware_tests`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement dynamic fan and temperature parsing**
+- [x] **Step 3: Implement dynamic fan and temperature parsing**
 
 - In `discovery.rs`:
   - Read `fanN_label` from sysfs (e.g. "CPU Fan", "GPU Fan") instead of hardcoding.
@@ -402,12 +402,12 @@ Expected: FAIL.
 - In `awccd/src/main.rs`:
   - If temperatures cannot be read (all `None`), fail safe: log warning and do not suppress fan boost.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --test mock_hardware_tests`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/awcc-core/ crates/awccd/ crates/awcc-core/tests/
@@ -429,7 +429,7 @@ git commit -m "feat(telemetry): parse dynamic fan limits and labels; eliminate f
 - Consumes: ACPI WMI Game Shift status interface (if present)
 - Produces: `GModeStatus` enum (`Active`, `Inactive`, `NotExposed`, `Unsupported`)
 
-- [ ] **Step 1: Write test verifying G-Mode is not inferred from performance profile**
+- [x] **Step 1: Write test verifying G-Mode is not inferred from performance profile**
 
 ```rust
 #[test]
@@ -439,23 +439,23 @@ fn test_gmode_not_inferred_from_performance_profile() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --test mock_hardware_tests`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `GModeStatus` enum and remove false inferences**
+- [x] **Step 3: Implement `GModeStatus` enum and remove false inferences**
 
 - Stop equating `profile == "performance"` with G-Mode.
 - In `bin/awcc-gameshift-toggle.sh`: Remove boost >= 240 inference. Toggle profile between `performance` (with boost 255) and `balanced` (with boost 0), and report explicit target state.
 - In `cmd_doctor` and `cmd_status`: Display G-Mode as `Not Exposed by Driver Interface (Actuated via Performance Profile + 255 Boost)`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --test mock_hardware_tests`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/awcc-core/ crates/awccctl/ bin/awcc-gameshift-toggle.sh
@@ -477,22 +477,22 @@ git commit -m "fix(gmode): report truthful G-Mode status instead of inferring fr
 - Consumes: Strict error types
 - Produces: Zero panics, proper exit codes, and configurable sysfs root
 
-- [ ] **Step 1: Write tests for error types and invalid inputs**
+- [x] **Step 1: Write tests for error types and invalid inputs**
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
-- [ ] **Step 3: Implement strict error handling and `--sysfs-root` support for testing**
+- [x] **Step 3: Implement strict error handling and `--sysfs-root` support for testing**
 
 - Add `AwccError::InvalidProfile`, `AwccError::SensorUnavailable`, `AwccError::PermissionDenied`.
 - Support `--sysfs-root` in `HardwareManager` for deterministic test fixtures.
 - Return exit code `1` on hardware/IO failures, exit code `2` on usage errors.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cargo test --workspace`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/awcc-core/ crates/awccctl/ crates/awccd/
@@ -513,7 +513,7 @@ git commit -m "refactor(crates): harden error handling and add sysfs root abstra
 - Consumes: `gsettings` custom keybindings list
 - Produces: Safe append without overwriting user shortcuts; reversible uninstall script
 
-- [ ] **Step 1: Write test checking shell syntax across all scripts**
+- [x] **Step 1: Write test checking shell syntax across all scripts**
 
 ```bash
 cat << 'EOF' > tests/shell_syntax_check.sh
@@ -529,23 +529,23 @@ EOF
 chmod +x tests/shell_syntax_check.sh
 ```
 
-- [ ] **Step 2: Run test to verify syntax**
+- [x] **Step 2: Run test to verify syntax**
 
 Run: `tests/shell_syntax_check.sh`
 Expected: PASS.
 
-- [ ] **Step 3: Update `setup-f9-keybind.sh` to safely append and provide unbinder**
+- [x] **Step 3: Update `setup-f9-keybind.sh` to safely append and provide unbinder**
 
 - Read current custom keybindings list via `gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings`.
 - Append a new keybinding path without wiping the existing array.
 - Create `bin/uninstall-f9-keybind.sh` to cleanly remove the added binding and restore original list.
 
-- [ ] **Step 4: Run test to verify syntax**
+- [x] **Step 4: Run test to verify syntax**
 
 Run: `tests/shell_syntax_check.sh`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add bin/ tests/shell_syntax_check.sh
@@ -565,31 +565,31 @@ git commit -m "fix(scripts): safe non-destructive F9 keybinding registration and
 - Consumes: In-memory/temporary mock `/sys` trees
 - Produces: Complete automated test suite covering missing files, permission errors, and arbitrary hwmon indexes
 
-- [ ] **Step 1: Create mock hardware test suite in `mock_hardware_tests.rs`**
+- [x] **Step 1: Create mock hardware test suite in `mock_hardware_tests.rs`**
 
 - Test arbitrary hwmon indexes (`hwmon0` through `hwmon15`).
 - Test missing or unreadable `fan1_boost`.
 - Test readback mismatch.
 - Test missing temperature sensors.
 
-- [ ] **Step 2: Run `cargo test --workspace`**
+- [x] **Step 2: Run `cargo test --workspace`**
 
 Run: `cargo test --workspace`
 Expected: PASS.
 
-- [ ] **Step 3: Create GitHub Actions workflow `.github/workflows/ci.yml`**
+- [x] **Step 3: Create GitHub Actions workflow `.github/workflows/ci.yml`**
 
 - Runs `cargo test --workspace`.
 - Runs `cargo clippy --workspace -- -D warnings`.
 - Runs `cargo fmt --check`.
 - Runs `tests/security_permissions_test.sh`, `tests/portability_path_test.sh`, `tests/shell_syntax_check.sh`.
 
-- [ ] **Step 4: Verify CI checks locally**
+- [x] **Step 4: Verify CI checks locally**
 
 Run: `cargo clippy --workspace -- -D warnings && cargo fmt --check`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/awcc-core/tests/ .github/workflows/ci.yml
@@ -611,29 +611,29 @@ git commit -m "ci: add automated CI workflow and mock hardware test suite"
 - Consumes: Verified hardware facts from G15 5530 testbed
 - Produces: Honest, accurate documentation and spec file
 
-- [ ] **Step 1: Update README.md to eliminate overclaims**
+- [x] **Step 1: Update README.md to eliminate overclaims**
 
 - Clarify that the cybernetic cockpit is an advanced terminal UI (TUI), not a desktop GUI.
 - Record accurate fan RPM limits (up to ~4800 RPM observed on G15 5530 hardware, not arbitrary numbers).
 - Clearly explain the privileged execution model (via `sudo` or `awccd.service`, no world-writable sysfs).
 
-- [ ] **Step 2: Update `docs/compatibility-matrix.md` and `docs/safety-model.md`**
+- [x] **Step 2: Update `docs/compatibility-matrix.md` and `docs/safety-model.md`**
 
 - Distinguish physically verified hardware (Dell G15 5530) from community/unverified models.
 - Document threat model without world-writable permissions.
 
-- [ ] **Step 3: Fix `packaging/rhel/awcc-linux.spec`**
+- [x] **Step 3: Fix `packaging/rhel/awcc-linux.spec`**
 
 - Set `URL: https://github.com/Monkey0-9/Awcc`.
 - Ensure DKMS errors are not silently ignored with `|| true`.
 - Remove `chmod 0666` rules.
 
-- [ ] **Step 4: Run all test scripts**
+- [x] **Step 4: Run all test scripts**
 
 Run: `tests/security_permissions_test.sh && tests/portability_path_test.sh && tests/test_performance_semantics.sh && cargo test --workspace`
 Expected: All PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add README.md docs/ packaging/rhel/awcc-linux.spec

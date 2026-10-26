@@ -40,5 +40,11 @@ jobs:
       - name: Shell Syntax Check
         run: ./tests/shell_syntax_check.sh
 
+      - name: Error Exit Codes & Failure Propagation Check
+        run: ./tests/test_error_exit_codes.sh
+
+      - name: Documentation Claims & License Verification Check
+        run: ./tests/doc_claims_verification.sh
+
       - name: Python Dashboard Syntax Verification
         run: python3 -m py_compile bin/awcc-lux-dashboard.py

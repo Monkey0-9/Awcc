@@ -31,7 +31,7 @@ fi
 B1="$(cat "${AW_HWMON}/fan1_boost" 2>/dev/null || echo '?')"
 B2="$(cat "${AW_HWMON}/fan2_boost" 2>/dev/null || echo '?')"
 
-if [[ "$B1" -ne 0 ]] || [[ "$B2" -ne 0 ]]; then
+if [[ "$B1" != "0" ]] || [[ "$B2" != "0" ]]; then
     echo "[-] Error: Failed to release fan boost (Readback: Fan 1 = $B1, Fan 2 = $B2)." >&2
     exit 1
 fi

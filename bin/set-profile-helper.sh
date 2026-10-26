@@ -73,7 +73,7 @@ fi
 if [[ "${BOOST_APPLIED}" -eq 1 ]]; then
     READ_B1="$(cat "${AW_HWMON}/fan1_boost" 2>/dev/null || echo '?')"
     READ_B2="$(cat "${AW_HWMON}/fan2_boost" 2>/dev/null || echo '?')"
-    if [[ "${READ_B1}" -eq "${BOOST}" ]] && [[ "${READ_B2}" -eq "${BOOST}" ]]; then
+    if [[ "${READ_B1}" == "${BOOST}" ]] && [[ "${READ_B2}" == "${BOOST}" ]]; then
         echo "[+] Fan boost confirmed: Fan 1 = ${READ_B1}/255, Fan 2 = ${READ_B2}/255"
     else
         echo "[-] Error: Fan boost readback mismatch: requested ${BOOST}, got Fan 1: ${READ_B1}, Fan 2: ${READ_B2}" >&2

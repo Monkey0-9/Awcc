@@ -1,4 +1,5 @@
 use awcc_core::error::AwccError;
+use awcc_core::governor::ThermalGovernor;
 use awcc_core::telemetry::FanTelemetry;
 
 #[test]
@@ -46,4 +47,31 @@ fn test_error_formatting() {
         err_prof.to_string(),
         "Invalid platform profile 'ultra_turbo'. Available choices: [quiet, performance]"
     );
+}
+
+#[test]
+fn test_thermal_governor_curve_and_hysteresis() {
+    let mut gov = ThermalGovernor::new();
+    assert_eq!(gov.last_boost(), 0);
+
+    // Below 50.0°C: boost is 0
+    assert_eq!(gov.compute_boost(35.0), 0);
+    assert_eq!(gov.compute_boost(49.9), 0);
+
+    // Ramp up at 85.0°C and above: instant max boost 255
+    assert_eq!(gov.compute_boost(85.0), 255);
+    assert_eq!(gov.last_boost(), 255);
+
+    assert_eq!(gov.compute_boost(95.0), 255);
+
+    // Instant temp drop from 95°C to 40°C:
+    // Raw target is 0, but hysteresis limits decrease to at most 15 units per cycle
+    let damped1 = gov.compute_boost(40.0);
+    assert_eq!(damped1, 240); // 255 - 15
+
+    let damped2 = gov.compute_boost(40.0);
+    assert_eq!(damped2, 225); // 240 - 15
+
+    // Sudden spike back to 85°C: instant ramp-up with no damping
+    assert_eq!(gov.compute_boost(85.0), 255);
 }
