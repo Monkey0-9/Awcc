@@ -44,6 +44,7 @@ install -m 0755 bin/awcc-lux-dashboard.py %{buildroot}%{_bindir}/awcc-lux-dashbo
 # Shell helpers & symlinks
 install -m 0755 bin/awcc-mode %{buildroot}%{_bindir}/awcc-mode
 install -m 0755 bin/awcc-track %{buildroot}%{_bindir}/awcc-track
+install -m 0755 bin/awcc-monitor %{buildroot}%{_bindir}/awcc-monitor
 install -m 0755 bin/awcc-gameshift-toggle.sh %{buildroot}%{_bindir}/awcc-gameshift-toggle
 ln -sf %{_bindir}/awcc-gameshift-toggle %{buildroot}%{_bindir}/gmode
 

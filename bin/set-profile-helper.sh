@@ -84,16 +84,35 @@ else
     exit 1
 fi
 
-# 3. Present Real-Time Telemetry
-echo "[3/3] Current System & Thermal Status:"
-if command -v awccctl >/dev/null 2>&1; then
-    awccctl status
-elif [[ -x "$(dirname "$0")/../target/release/awccctl" ]]; then
-    "$(dirname "$0")/../target/release/awccctl" status
-elif [[ -x "$(dirname "$0")/../target/debug/awccctl" ]]; then
-    "$(dirname "$0")/../target/debug/awccctl" status
-fi
-
+# 3. Present Confirmation and Enter Real-Time Monitoring
 echo "================================================================="
 echo "[+] ${TITLE} Mode successfully actuated and readback verified."
 echo "================================================================="
+
+AWCCCTL_EXEC=""
+if command -v awccctl >/dev/null 2>&1; then
+    AWCCCTL_EXEC="awccctl"
+elif [[ -x "$(dirname "$0")/../target/release/awccctl" ]]; then
+    AWCCCTL_EXEC="$(dirname "$0")/../target/release/awccctl"
+elif [[ -x "$(dirname "$0")/../target/debug/awccctl" ]]; then
+    AWCCCTL_EXEC="$(dirname "$0")/../target/debug/awccctl"
+fi
+
+if [[ "${4:-}" == "--once" ]] || [[ "${4:-}" == "--snapshot" ]] || [[ "${4:-}" == "--no-monitor" ]]; then
+    echo "[3/3] Current System & Thermal Status:"
+    if [[ -n "${AWCCCTL_EXEC}" ]]; then
+        "${AWCCCTL_EXEC}" status
+    fi
+elif [[ -t 1 ]] && [[ -t 0 ]] && [[ "${AWCC_NONINTERACTIVE:-0}" != "1" ]] && [[ -z "${CI:-}" ]]; then
+    echo ""
+    echo "[*] Entering continuous real-time monitoring (Press Ctrl+C to stop)..."
+    sleep 0.5
+    if [[ -n "${AWCCCTL_EXEC}" ]]; then
+        exec "${AWCCCTL_EXEC}" monitor --interval 1.0
+    fi
+else
+    echo "[3/3] Current System & Thermal Status:"
+    if [[ -n "${AWCCCTL_EXEC}" ]]; then
+        "${AWCCCTL_EXEC}" status
+    fi
+fi

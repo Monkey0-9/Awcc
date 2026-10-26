@@ -53,7 +53,8 @@ enum Commands {
         interval: f64,
     },
 
-    /// Dedicated real-time hardware telemetry tracking console
+    /// Dedicated real-time hardware telemetry tracking and monitoring console
+    #[command(alias = "monitor")]
     Track {
         /// Output formatted JSON stream
         #[arg(long)]
@@ -76,12 +77,28 @@ enum Commands {
     Profile {
         /// Profile name
         name: String,
+
+        /// Continuously monitor live hardware performance, thermals, and fan speeds until stopped
+        #[arg(short, long, alias = "watch")]
+        monitor: bool,
+
+        /// Refresh interval in seconds for monitor mode
+        #[arg(short, long, default_value_t = 1.0)]
+        interval: f64,
     },
 
     /// Toggle or query Dell Game Shift / Ultra Performance G-Mode
     Gmode {
         /// Optional state (on/off/toggle)
         state: Option<String>,
+
+        /// Continuously monitor live hardware performance, thermals, and fan speeds until stopped
+        #[arg(short, long, alias = "watch")]
+        monitor: bool,
+
+        /// Refresh interval in seconds for monitor mode
+        #[arg(short, long, default_value_t = 1.0)]
+        interval: f64,
     },
 
     /// Fan control operations
@@ -111,11 +128,22 @@ enum FanCommands {
         /// Boost value (0 to 255)
         #[arg(long)]
         boost: u8,
+        /// Continuously monitor live hardware performance, thermals, and fan speeds until stopped
+        #[arg(short, long, alias = "watch")]
+        monitor: bool,
     },
     /// Request maximum fan boost on all fans
-    Max,
+    Max {
+        /// Continuously monitor live hardware performance, thermals, and fan speeds until stopped
+        #[arg(short, long, alias = "watch")]
+        monitor: bool,
+    },
     /// Release fan boost back to BIOS/firmware control
-    Release,
+    Release {
+        /// Continuously monitor live hardware performance, thermals, and fan speeds until stopped
+        #[arg(short, long, alias = "watch")]
+        monitor: bool,
+    },
 }
 
 fn main() {
@@ -139,12 +167,24 @@ fn main() {
             once,
             cli: _,
         } => cmd_track(&hw, json, interval, once),
-        Commands::Profile { name } => cmd_profile(&hw, &name),
-        Commands::Gmode { state } => cmd_gmode(&hw, state),
+        Commands::Profile {
+            name,
+            monitor,
+            interval,
+        } => cmd_profile(&hw, &name, monitor, interval),
+        Commands::Gmode {
+            state,
+            monitor,
+            interval,
+        } => cmd_gmode(&hw, state, monitor, interval),
         Commands::Fan { command } => match command {
-            FanCommands::Set { fan, boost } => cmd_fan_set(&hw, fan, boost),
-            FanCommands::Max => cmd_fan_max(&hw),
-            FanCommands::Release => cmd_fan_release(&hw),
+            FanCommands::Set {
+                fan,
+                boost,
+                monitor,
+            } => cmd_fan_set(&hw, fan, boost, monitor),
+            FanCommands::Max { monitor } => cmd_fan_max(&hw, monitor),
+            FanCommands::Release { monitor } => cmd_fan_release(&hw, monitor),
         },
         Commands::Doctor => cmd_doctor(&hw),
         Commands::Verify { step_duration } => cmd_verify(&hw, step_duration),
@@ -304,6 +344,15 @@ fn cmd_detect(hw: &HardwareManager) {
 }
 
 fn render_status_snapshot(hw: &HardwareManager, json: bool) {
+    render_status_snapshot_internal(hw, json, false, 1.0);
+}
+
+fn render_status_snapshot_internal(
+    hw: &HardwareManager,
+    json: bool,
+    is_live: bool,
+    interval: f64,
+) {
     let tele = hw.get_telemetry();
     if json {
         println!("{}", serde_json::to_string_pretty(&tele).unwrap());
@@ -591,6 +640,17 @@ fn render_status_snapshot(hw: &HardwareManager, json: bool) {
             );
         }
     }
+    if is_live {
+        println!(
+            "  {}",
+            format!(
+                "[ Live Monitoring Active • Refresh: {:.1}s • Press Ctrl+C to stop ]",
+                interval
+            )
+            .bold()
+            .yellow()
+        );
+    }
     println!(
         "{}",
         "=========================================================================="
@@ -624,7 +684,7 @@ fn run_live_watch_loop(hw: &HardwareManager, json: bool, interval: f64) {
             io::stdout().flush().ok();
         } else {
             print!("\x1b[H");
-            render_status_snapshot(hw, false);
+            render_status_snapshot_internal(hw, false, true, interval);
             print!("\x1b[J");
             io::stdout().flush().ok();
         }
@@ -634,6 +694,7 @@ fn run_live_watch_loop(hw: &HardwareManager, json: bool, interval: f64) {
     if !json {
         // Restore cursor and clear formatting on clean exit
         println!("\x1b[?25h\x1b[0m");
+        println!("{}", "[+] Live monitoring stopped.".green().bold());
         io::stdout().flush().ok();
     }
 }
@@ -654,7 +715,7 @@ fn cmd_track(hw: &HardwareManager, json: bool, interval: f64, once: bool) {
     run_live_watch_loop(hw, json, interval);
 }
 
-fn cmd_profile(hw: &HardwareManager, profile: &str) {
+fn cmd_profile(hw: &HardwareManager, profile: &str, monitor: bool, interval: f64) {
     let target = if profile.to_lowercase() == "ultra" {
         println!("[*] Ultra profile requested: Setting performance mode...");
         "performance"
@@ -676,9 +737,15 @@ fn cmd_profile(hw: &HardwareManager, profile: &str) {
         "[+] Success:".bold().green(),
         target
     );
+
+    if monitor {
+        println!("[*] Entering live hardware monitoring (Press Ctrl+C to stop)...");
+        sleep(Duration::from_millis(300));
+        run_live_watch_loop(hw, false, interval);
+    }
 }
 
-fn cmd_gmode(hw: &HardwareManager, state: Option<String>) {
+fn cmd_gmode(hw: &HardwareManager, state: Option<String>, monitor: bool, interval: f64) {
     let caps = hw.capabilities();
     if !caps.has_game_shift && caps.active_provider_name != "dell_awcc" {
         eprintln!(
@@ -786,9 +853,15 @@ fn cmd_gmode(hw: &HardwareManager, state: Option<String>) {
             println!("Game Shift Status: {}", status);
         }
     }
+
+    if monitor {
+        println!("[*] Entering live hardware monitoring (Press Ctrl+C to stop)...");
+        sleep(Duration::from_millis(300));
+        run_live_watch_loop(hw, false, interval);
+    }
 }
 
-fn cmd_fan_set(hw: &HardwareManager, fan: u8, boost: u8) {
+fn cmd_fan_set(hw: &HardwareManager, fan: u8, boost: u8, monitor: bool) {
     if !(1..=6).contains(&fan) {
         eprintln!(
             "{} Invalid fan index {}. Controllable fans are 1 to 6.",
@@ -828,9 +901,15 @@ fn cmd_fan_set(hw: &HardwareManager, fan: u8, boost: u8) {
             std::process::exit(1);
         }
     }
+
+    if monitor {
+        println!("[*] Entering live hardware monitoring (Press Ctrl+C to stop)...");
+        sleep(Duration::from_millis(300));
+        run_live_watch_loop(hw, false, 1.0);
+    }
 }
 
-fn cmd_fan_max(hw: &HardwareManager) {
+fn cmd_fan_max(hw: &HardwareManager, monitor: bool) {
     let caps = hw.capabilities();
     if matches!(caps.fan_control, FanControlCapability::None) {
         eprintln!(
@@ -877,9 +956,15 @@ fn cmd_fan_max(hw: &HardwareManager) {
             .bold()
             .green()
     );
+
+    if monitor {
+        println!("[*] Entering live hardware monitoring (Press Ctrl+C to stop)...");
+        sleep(Duration::from_millis(300));
+        run_live_watch_loop(hw, false, 1.0);
+    }
 }
 
-fn cmd_fan_release(hw: &HardwareManager) {
+fn cmd_fan_release(hw: &HardwareManager, monitor: bool) {
     println!(
         "{}",
         "[*] Releasing fan boost back to BIOS firmware control..."
@@ -902,6 +987,12 @@ fn cmd_fan_release(hw: &HardwareManager) {
             .bold()
             .green()
     );
+
+    if monitor {
+        println!("[*] Entering live hardware monitoring (Press Ctrl+C to stop)...");
+        sleep(Duration::from_millis(300));
+        run_live_watch_loop(hw, false, 1.0);
+    }
 }
 
 fn check_sysfs_permissions(root: &Path) -> (bool, Vec<String>) {

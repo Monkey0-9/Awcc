@@ -53,7 +53,7 @@ WRAPPER_JSON_OUT="$("${AWCC_TRACK}" --json --once)"
 echo "${WRAPPER_JSON_OUT}" | grep -q '"dmi_product"' || { echo "[-] Failed: awcc-track --json --once failed"; exit 1; }
 echo "[+] bin/awcc-track wrapper verified across CLI and JSON modes."
 
-echo "[7/7] Testing live CPU load tracking..."
+echo "[7/10] Testing live CPU load tracking..."
 LOAD_VAL=$(echo "${STATUS_JSON}" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data.get('cpu', {}).get('usage_percent'))")
 if [[ "${LOAD_VAL}" != "None" ]] && [[ -n "${LOAD_VAL}" ]]; then
     python3 -c "assert 0.0 <= float('${LOAD_VAL}') <= 100.0, 'Invalid CPU load percentage'"
@@ -61,5 +61,26 @@ if [[ "${LOAD_VAL}" != "None" ]] && [[ -n "${LOAD_VAL}" ]]; then
 else
     echo "[+] CPU load not exposed on this mock/virtual interface (graceful None)."
 fi
+
+echo "[8/10] Testing awccctl monitor alias and --once snapshot..."
+MON_OUT="$(${AWCCCTL} monitor --once)"
+echo "${MON_OUT}" | grep -q "AWCC Linux:" || { echo "[-] Failed: monitor --once missing header"; exit 1; }
+echo "${MON_OUT}" | grep -q "THERMAL SENSOR MATRIX" || { echo "[-] Failed: monitor --once missing thermal matrix"; exit 1; }
+echo "[+] awccctl monitor alias verified."
+
+echo "[9/10] Testing bin/awcc-monitor dedicated script..."
+AWCC_MON="${ROOT_DIR}/bin/awcc-monitor"
+"${AWCC_MON}" --help | grep -q "awcc-monitor" || { echo "[-] Failed: awcc-monitor --help failed"; exit 1; }
+MON_SCRIPT_OUT="$("${AWCC_MON}" --once)"
+echo "${MON_SCRIPT_OUT}" | grep -q "AWCC Linux:" || { echo "[-] Failed: awcc-monitor --once failed"; exit 1; }
+echo "[+] bin/awcc-monitor wrapper verified."
+
+echo "[10/10] Testing continuous live monitoring and clean interrupt termination (SIGINT / Ctrl+C)..."
+"${AWCCCTL}" monitor &
+MON_PID=$!
+sleep 1.2
+kill -2 "${MON_PID}"
+wait "${MON_PID}" || { echo "[-] Failed: awccctl monitor did not exit cleanly on SIGINT"; exit 1; }
+echo "[+] Live monitoring terminated cleanly on SIGINT (Exit Code 0)."
 
 echo "=== All AWCCCTL Tracking CLI Tests Passed Successfully! ==="

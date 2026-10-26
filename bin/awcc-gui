@@ -56,9 +56,11 @@ def find_awccctl_bin():
 
 class AwccApp(Adw.Application):
     def __init__(self, test_mode=False):
+        app_id = "io.github.monkey0_9.awcc.test" if test_mode else "io.github.monkey0_9.awcc"
+        flags = Gio.ApplicationFlags.NON_UNIQUE if test_mode else Gio.ApplicationFlags.FLAGS_NONE
         super().__init__(
-            application_id="io.github.monkey0_9.awcc",
-            flags=Gio.ApplicationFlags.FLAGS_NONE
+            application_id=app_id,
+            flags=flags
         )
         self.test_mode = test_mode
         self.ctl = find_awccctl_bin()

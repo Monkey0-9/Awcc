@@ -15,6 +15,7 @@ override_dh_auto_install:
 	install -m 0755 bin/awcc-lux-dashboard.py debian/awcc-linux/usr/bin/awcc-lux-dashboard.py
 	install -m 0755 bin/awcc-mode debian/awcc-linux/usr/bin/awcc-mode
 	install -m 0755 bin/awcc-track debian/awcc-linux/usr/bin/awcc-track
+	install -m 0755 bin/awcc-monitor debian/awcc-linux/usr/bin/awcc-monitor
 	install -m 0755 bin/awcc-gameshift-toggle.sh debian/awcc-linux/usr/bin/awcc-gameshift-toggle
 	ln -sf awcc-gameshift-toggle debian/awcc-linux/usr/bin/gmode
 

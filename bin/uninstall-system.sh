@@ -58,6 +58,7 @@ BINS=(
     awcc-mode
     awcc-mode.sh
     awcc-track
+    awcc-monitor
     awcc-gameshift-toggle
     doctor-recovery
     gmode

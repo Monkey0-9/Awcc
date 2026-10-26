@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# AWCC Linux: Dedicated Hardware Performance & Thermal Monitor
+# Continuously monitors CPU, GPU, RAM, VRM, Air, Charger, and Fans until stopped.
+# ==============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+ROOT_DIR="$(dirname "${SCRIPT_DIR}")"
+
+AWCCCTL_BIN=""
+for cand in \
+    "${SCRIPT_DIR}/awccctl" \
+    "${ROOT_DIR}/target/release/awccctl" \
+    "${ROOT_DIR}/target/debug/awccctl" \
+    "${HOME}/.local/bin/awccctl" \
+    "/usr/local/bin/awccctl" \
+    "/usr/bin/awccctl"; do
+    if [[ -x "$cand" ]]; then
+        AWCCCTL_BIN="$cand"
+        break
+    fi
+done
+
+DASHBOARD_SCRIPT=""
+for cand in \
+    "${SCRIPT_DIR}/awcc-lux-dashboard.py" \
+    "${ROOT_DIR}/bin/awcc-lux-dashboard.py" \
+    "${HOME}/.local/bin/awcc-lux-dashboard.py" \
+    "/usr/local/bin/awcc-lux-dashboard.py" \
+    "/usr/bin/awcc-lux-dashboard.py"; do
+    if [[ -f "$cand" ]]; then
+        DASHBOARD_SCRIPT="$cand"
+        break
+    fi
+done
+
+if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    echo "AWCC Linux Hardware Performance & Thermal Monitor"
+    echo ""
+    echo "Usage: awcc-monitor [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --cli            Run full CLI terminal matrix monitor (default)"
+    echo "  --tui            Launch full interactive 24-bit TrueColor cockpit"
+    echo "  --once, -s       Print single snapshot and exit"
+    echo "  --json           Stream continuous telemetry as JSON lines"
+    echo "  --interval <sec> Refresh rate in seconds (default: 1.0)"
+    echo "  --help, -h       Show this help dialog"
+    exit 0
+fi
+
+# If --tui is requested, launch the truecolor curses cockpit
+for arg in "$@"; do
+    if [[ "$arg" == "--tui" ]] || [[ "$arg" == "--dashboard" ]]; then
+        if [[ -n "$DASHBOARD_SCRIPT" ]]; then
+            ARGS=()
+            for a in "$@"; do
+                if [[ "$a" != "--tui" ]] && [[ "$a" != "--dashboard" ]]; then
+                    ARGS+=("$a")
+                fi
+            done
+            exec python3 "$DASHBOARD_SCRIPT" "${ARGS[@]}"
+        fi
+    fi
+done
+
+# Otherwise execute awccctl track/monitor
+if [[ -n "$AWCCCTL_BIN" ]]; then
+    exec "$AWCCCTL_BIN" track "$@"
+elif [[ -n "$DASHBOARD_SCRIPT" ]]; then
+    exec python3 "$DASHBOARD_SCRIPT" "$@"
+else
+    echo "[-] Error: Neither awccctl nor awcc-lux-dashboard.py was found." >&2
+    exit 1
+fi

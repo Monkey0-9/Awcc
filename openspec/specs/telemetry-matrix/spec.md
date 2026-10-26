@@ -22,3 +22,14 @@ The system SHALL provide six cinema-grade TrueColor color-grading themes (`cryo`
 #### Scenario: Theme selection
 - **WHEN** a user selects a visual theme (`cryo`, `cyberpunk`, `darkcore`, `solar`, `matrix`, or `vaporwave`)
 - **THEN** the dashboard renders ANSI 24-bit RGB palettes matching the configured aesthetic profile.
+
+### Requirement: Continuous Hardware Monitoring Loop
+The system SHALL provide continuous real-time hardware telemetry monitoring when commands run until explicitly stopped by the user.
+
+#### Scenario: Continuous interactive monitoring
+- **WHEN** an actuation command or monitor command is executed in an interactive terminal
+- **THEN** the system continuously streams live hardware telemetry updating in real-time until a termination signal (SIGINT, SIGTERM, or 'q') is received.
+
+#### Scenario: Clean termination on interrupt
+- **WHEN** the user interrupts the running monitoring session with Ctrl+C (SIGINT)
+- **THEN** the system restores terminal cursor and attributes and exits with code 0 without background hangs.

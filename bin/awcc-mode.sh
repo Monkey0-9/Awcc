@@ -55,6 +55,27 @@ else
     DISPLAY_MACHINE="${CLEAN_VENDOR} ${PRODUCT}"
 fi
 
+# Help documentation
+if [[ "${MODE}" == "--help" ]] || [[ "${MODE}" == "-h" ]]; then
+    echo "Usage: awcc-mode [MODE] [OPTIONS]"
+    echo ""
+    echo "Modes:"
+    echo "  1 | battery      Silent Whisper (~1,000 RPM, 10/255 Boost)"
+    echo "  2 | quiet        Acoustic Silence (~1,450 RPM, 20/255 Boost)"
+    echo "  3 | balance      Daily Productivity (~1,980 RPM, 40/255 Boost)"
+    echo "  4 | mid          Intermediate Performance (~3,100 RPM, 65/255 Boost)"
+    echo "  5 | high         High Performance (~4,200 RPM, 85/255 Boost)"
+    echo "  6 | ultra        Ultra Performance & Game Shift (255/255 Max Boost)"
+    echo ""
+    echo "Options:"
+    echo "  --once, -s       Print single status snapshot and exit (no live monitoring)"
+    echo "  --monitor, -m    Explicitly enter continuous live monitoring until Ctrl+C"
+    echo "  --tui            Launch full interactive 24-bit TrueColor cockpit"
+    echo "  --quiet, -q      Actuate profile silently without status output"
+    echo "  --help, -h       Display this help documentation"
+    exit 0
+fi
+
 # If no mode argument is provided or a flag is passed, launch the live monitor
 if [[ -z "${MODE}" ]] || [[ "${MODE}" =~ ^- ]] || [[ "${MODE,,}" == "monitor" ]] || [[ "${MODE,,}" == "live" ]] || [[ "${MODE,,}" == "track" ]]; then
     if [[ -n "$DASHBOARD_SCRIPT" ]]; then
@@ -151,39 +172,73 @@ else
 fi
 
 # 4. Handle flag transitions
+AWCCCTL_BIN=""
+if [[ -x "${ROOT_DIR}/target/release/awccctl" ]]; then
+    AWCCCTL_BIN="${ROOT_DIR}/target/release/awccctl"
+elif [[ -x "${HOME}/.local/bin/awccctl" ]]; then
+    AWCCCTL_BIN="${HOME}/.local/bin/awccctl"
+elif [[ -x "${ROOT_DIR}/target/debug/awccctl" ]]; then
+    AWCCCTL_BIN="${ROOT_DIR}/target/debug/awccctl"
+elif command -v awccctl >/dev/null 2>&1; then
+    AWCCCTL_BIN="$(command -v awccctl)"
+fi
+
 if [[ "$FLAG" == "--quiet" ]] || [[ "$FLAG" == "-q" ]]; then
     exit 0
-elif [[ "$FLAG" == "--track" ]] || [[ "$FLAG" == "-t" ]] || [[ "$FLAG" == "--watch" ]] || [[ "$FLAG" == "-w" ]]; then
-    echo "[*] Transitioning directly to real-time hardware tracking cockpit..."
+elif [[ "$FLAG" == "--tui" ]] || [[ "$FLAG" == "--dashboard" ]]; then
+    echo "=========================================================================="
+    echo "[+] ${TITLE} activated successfully."
+    echo "=========================================================================="
+    echo "[*] Launching interactive TrueColor dashboard..."
     sleep 0.4
-    if [[ -x "${SCRIPT_DIR}/awcc-track" ]]; then
-        exec "${SCRIPT_DIR}/awcc-track"
-    elif command -v awcc-track >/dev/null 2>&1; then
-        exec awcc-track
+    if [[ -n "$DASHBOARD_SCRIPT" ]]; then
+        exec python3 "$DASHBOARD_SCRIPT"
+    fi
+elif [[ "$FLAG" == "--track" ]] || [[ "$FLAG" == "-t" ]] || [[ "$FLAG" == "--watch" ]] || [[ "$FLAG" == "-w" ]] || [[ "$FLAG" == "--monitor" ]] || [[ "$FLAG" == "-m" ]]; then
+    echo "=========================================================================="
+    echo "[+] ${TITLE} activated successfully."
+    echo "=========================================================================="
+    echo "[*] Entering continuous real-time hardware monitoring (Press Ctrl+C to stop)..."
+    sleep 0.4
+    if [[ -n "${AWCCCTL_BIN}" ]]; then
+        exec "${AWCCCTL_BIN}" track --interval 1.0
+    elif [[ -x "${SCRIPT_DIR}/awcc-track" ]]; then
+        exec "${SCRIPT_DIR}/awcc-track" --cli
     elif [[ -n "$DASHBOARD_SCRIPT" ]]; then
         exec python3 "$DASHBOARD_SCRIPT"
-    elif [[ -x "${ROOT_DIR}/target/release/awccctl" ]]; then
-        exec "${ROOT_DIR}/target/release/awccctl" track
     fi
-elif [[ "$FLAG" == "--snapshot" ]] || [[ "$FLAG" == "-s" ]] || [[ "$FLAG" == "--once" ]]; then
-    if [[ -n "$DASHBOARD_SCRIPT" ]]; then
-        python3 "$DASHBOARD_SCRIPT" --snapshot
-    fi
-else
+elif [[ "$FLAG" == "--snapshot" ]] || [[ "$FLAG" == "-s" ]] || [[ "$FLAG" == "--once" ]] || [[ "$FLAG" == "--no-monitor" ]]; then
     echo "[3/3] Current System & Thermal Status:"
-    AWCCCTL_BIN=""
-    if [[ -x "${ROOT_DIR}/target/release/awccctl" ]]; then
-        AWCCCTL_BIN="${ROOT_DIR}/target/release/awccctl"
-    elif [[ -x "${HOME}/.local/bin/awccctl" ]]; then
-        AWCCCTL_BIN="${HOME}/.local/bin/awccctl"
-    elif command -v awccctl >/dev/null 2>&1; then
-        AWCCCTL_BIN="$(command -v awccctl)"
-    fi
-
     if [[ -n "${AWCCCTL_BIN}" ]]; then
         "${AWCCCTL_BIN}" status
+    elif [[ -n "$DASHBOARD_SCRIPT" ]]; then
+        python3 "$DASHBOARD_SCRIPT" --snapshot
     fi
     echo "=========================================================================="
     echo "[+] ${TITLE} activated successfully."
     echo "=========================================================================="
+else
+    echo "=========================================================================="
+    echo "[+] ${TITLE} activated successfully."
+    echo "=========================================================================="
+
+    # If running in an interactive terminal, enter continuous live monitoring until stopped
+    if [[ -t 1 ]] && [[ -t 0 ]] && [[ "${AWCC_NONINTERACTIVE:-0}" != "1" ]] && [[ -z "${CI:-}" ]]; then
+        echo ""
+        echo "[*] Entering continuous real-time monitoring (Press Ctrl+C to stop)..."
+        sleep 0.5
+        if [[ -n "${AWCCCTL_BIN}" ]]; then
+            exec "${AWCCCTL_BIN}" track --interval 1.0
+        elif [[ -x "${SCRIPT_DIR}/awcc-track" ]]; then
+            exec "${SCRIPT_DIR}/awcc-track" --cli
+        elif [[ -n "$DASHBOARD_SCRIPT" ]]; then
+            exec python3 "$DASHBOARD_SCRIPT"
+        fi
+    else
+        # Single-shot snapshot for non-interactive / piped / automated invocations
+        echo "[3/3] Current System & Thermal Status:"
+        if [[ -n "${AWCCCTL_BIN}" ]]; then
+            "${AWCCCTL_BIN}" status
+        fi
+    fi
 fi

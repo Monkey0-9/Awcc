@@ -34,6 +34,7 @@ install -m 0755 bin/awcc-lux-dashboard.py $RPM_BUILD_ROOT%{_bindir}/awcc-lux-das
 # Shell helpers & symlinks
 install -m 0755 bin/awcc-mode $RPM_BUILD_ROOT%{_bindir}/awcc-mode
 install -m 0755 bin/awcc-track $RPM_BUILD_ROOT%{_bindir}/awcc-track
+install -m 0755 bin/awcc-monitor $RPM_BUILD_ROOT%{_bindir}/awcc-monitor
 install -m 0755 bin/awcc-gameshift-toggle.sh $RPM_BUILD_ROOT%{_bindir}/awcc-gameshift-toggle
 ln -sf %{_bindir}/awcc-gameshift-toggle $RPM_BUILD_ROOT%{_bindir}/gmode
 

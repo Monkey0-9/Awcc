@@ -28,10 +28,12 @@ if grep -q 'echo " Target Machine: Dell G15 5530"' "${ROOT_DIR}/bin/awcc-mode"; 
 fi
 echo "[+] Dynamic DMI identification in awcc-mode verified."
 
-echo "[4/4] Testing bin/awcc-track syntax and existence..."
+echo "[4/4] Testing bin/awcc-track and bin/awcc-monitor syntax and options..."
 bash -n "${ROOT_DIR}/bin/awcc-track"
+bash -n "${ROOT_DIR}/bin/awcc-monitor"
 bash -n "${ROOT_DIR}/bin/sync-local-bin.sh"
 bash -n "${ROOT_DIR}/bin/setup-sudoers.sh"
-echo "[+] Helper scripts syntax verified."
+"${ROOT_DIR}/bin/awcc-mode" --help | grep -q "Usage: awcc-mode" || { echo "[-] Failed: awcc-mode --help failed"; exit 1; }
+echo "[+] Helper scripts syntax and mode help verified."
 
 echo "=== All AWCC Mode & Dashboard Improvement Tests Passed! ==="

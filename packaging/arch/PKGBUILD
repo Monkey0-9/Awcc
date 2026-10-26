@@ -25,6 +25,7 @@ package() {
     install -Dm755 bin/awcc-lux-dashboard.py "$pkgdir/usr/bin/awcc-lux-dashboard.py"
     install -Dm755 bin/awcc-mode "$pkgdir/usr/bin/awcc-mode"
     install -Dm755 bin/awcc-track "$pkgdir/usr/bin/awcc-track"
+    install -Dm755 bin/awcc-monitor "$pkgdir/usr/bin/awcc-monitor"
     install -Dm755 bin/awcc-gameshift-toggle.sh "$pkgdir/usr/bin/awcc-gameshift-toggle"
     ln -sf awcc-gameshift-toggle "$pkgdir/usr/bin/gmode"
 

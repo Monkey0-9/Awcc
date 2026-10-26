@@ -32,6 +32,7 @@ install -m 0755 target/release/awccd $RPM_BUILD_ROOT%{_bindir}/awccd
 # Shell wrappers and governors
 install -m 0755 bin/awcc-mode.sh $RPM_BUILD_ROOT%{_bindir}/awcc-mode
 install -m 0755 bin/awcc-track $RPM_BUILD_ROOT%{_bindir}/awcc-track
+install -m 0755 bin/awcc-monitor $RPM_BUILD_ROOT%{_bindir}/awcc-monitor
 install -m 0755 bin/awcc-battery $RPM_BUILD_ROOT%{_bindir}/awcc-battery
 install -m 0755 bin/awcc-quiet $RPM_BUILD_ROOT%{_bindir}/awcc-quiet
 install -m 0755 bin/awcc-balance $RPM_BUILD_ROOT%{_bindir}/awcc-balance
@@ -73,6 +74,7 @@ fi
 %{_bindir}/awccd
 %{_bindir}/awcc-mode
 %{_bindir}/awcc-track
+%{_bindir}/awcc-monitor
 %{_bindir}/awcc-battery
 %{_bindir}/awcc-quiet
 %{_bindir}/awcc-balance
