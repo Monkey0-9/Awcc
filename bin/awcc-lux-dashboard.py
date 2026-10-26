@@ -268,35 +268,99 @@ def get_power_info():
         pass
     return ac_online, bat_pct, bat_status
 
-def apply_mode(mode_name):
-    this_dir = os.path.dirname(os.path.abspath(__file__))
-    candidates = [
-        os.path.join(this_dir, "awcc-mode.sh"),
-        os.path.join(this_dir, "awcc-mode"),
-        os.path.expanduser("~/.local/bin/awcc-mode"),
-        "/usr/local/bin/awcc-mode",
-        "/usr/bin/awcc-mode"
-    ]
-    for c in candidates:
-        if os.path.isfile(c) and os.access(c, os.X_OK):
-            subprocess.run([c, mode_name, "--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            return
-    subprocess.run(["awcc-mode", mode_name, "--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+MODE_DEFS = {
+    1: {"name": "battery", "profile": "quiet",       "boost": 10,  "label": "BATTERY SAVER",    "desc": "10% Boost (~1,000 RPM)"},
+    2: {"name": "quiet",   "profile": "quiet",       "boost": 20,  "label": "QUIET",            "desc": "20% Boost (~1,450 RPM)"},
+    3: {"name": "balance", "profile": "balanced",    "boost": 40,  "label": "BALANCE",          "desc": "40% Boost (~1,980 RPM)"},
+    4: {"name": "mid",     "profile": "performance", "boost": 65,  "label": "MID",              "desc": "65% Boost (~3,100 RPM)"},
+    5: {"name": "high",    "profile": "performance", "boost": 85,  "label": "HIGH PERFORMANCE", "desc": "85% Boost (~4,200 RPM)"},
+    6: {"name": "ultra",   "profile": "performance", "boost": 255, "label": "ULTRA / G-MODE",   "desc": "100% Boost (5,029 RPM)"},
+}
 
-def toggle_gameshift():
-    this_dir = os.path.dirname(os.path.abspath(__file__))
-    candidates = [
-        os.path.join(this_dir, "awcc-gameshift-toggle.sh"),
-        os.path.join(this_dir, "awcc-gameshift-toggle"),
-        os.path.expanduser("~/.local/bin/awcc-gameshift-toggle"),
-        "/usr/local/bin/awcc-gameshift-toggle",
-        "/usr/bin/awcc-gameshift-toggle"
-    ]
-    for c in candidates:
-        if os.path.isfile(c) and os.access(c, os.X_OK):
-            subprocess.run([c, "--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            return
-    subprocess.run(["awcc-gameshift-toggle", "--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def apply_mode_direct(mode_idx, aw_hwmon):
+    cfg = MODE_DEFS.get(mode_idx)
+    if not cfg:
+        return
+
+    # 1. Apply ACPI platform profile directly to kernel
+    try:
+        with open("/sys/firmware/acpi/platform_profile", "w") as f:
+            f.write(cfg["profile"])
+    except Exception:
+        pass
+
+    # 2. Apply fan boosts directly to hardware nodes
+    if aw_hwmon and os.path.isdir(aw_hwmon):
+        for b_name in ["fan1_boost", "fan2_boost"]:
+            b_path = os.path.join(aw_hwmon, b_name)
+            try:
+                with open(b_path, "w") as f:
+                    f.write(str(cfg["boost"]))
+            except Exception:
+                pass
+
+    # 3. Synchronize Game Shift state file
+    try:
+        with open("/tmp/.awcc_gmode_state", "w") as f:
+            f.write("ON\n" if cfg["boost"] >= 240 else "OFF\n")
+    except Exception:
+        pass
+
+    # 4. Trigger non-blocking visual/audio feedback
+    try:
+        is_turbo = (cfg["boost"] >= 240)
+        icon = "preferences-system-performance" if is_turbo else "preferences-system-power"
+        sound = "service-login" if is_turbo else "dialog-information"
+        subprocess.Popen(
+            ["notify-send", "-u", "normal", "-t", "2000", "-i", icon,
+             f"AWCC Mode: {cfg['label']}",
+             f"Active Profile: {cfg['profile'].upper()} | {cfg['desc']}"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        subprocess.Popen(
+            ["canberra-gtk-play", "-i", sound],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+    except Exception:
+        pass
+
+def toggle_gameshift_direct(aw_hwmon):
+    b1 = 0
+    if aw_hwmon and os.path.isdir(aw_hwmon):
+        try:
+            with open(os.path.join(aw_hwmon, "fan1_boost"), "r") as f:
+                b1 = int(f.read().strip())
+        except Exception:
+            pass
+    if b1 >= 240:
+        apply_mode_direct(3, aw_hwmon)
+    else:
+        apply_mode_direct(6, aw_hwmon)
+
+def decode_key(text):
+    if not text:
+        return None
+    # Function key F9 / Fn+F9
+    if any(k in text for k in ['\x1b[20~', '\x1b[19~', '\x1b[21~', '\x1b[24~', '\x1b[20', '\x1b[19', '\x1b[21']):
+        return 'F9'
+    # Numpad & number row 1-6:
+    if '1' in text or '\x1bOq' in text or '\x1b[4~' in text:
+        return 1
+    if '2' in text or '\x1bOr' in text:
+        return 2
+    if '3' in text or '\x1bOs' in text or '\x1b[6~' in text:
+        return 3
+    if '4' in text or '\x1bOt' in text:
+        return 4
+    if '5' in text or '\x1bOu' in text or '\x1b[E' in text or '\x1b[G' in text:
+        return 5
+    if '6' in text or '\x1bOv' in text:
+        return 6
+    if any(c in text for c in ['q', 'Q', 'x', 'X']) and not text.startswith('\x1b'):
+        return 'QUIT'
+    if ('r' in text or 'R' in text) and not text.startswith('\x1b'):
+        return 'REFRESH'
+    return None
 
 def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status):
     box_width, inner_width, gauge_width = get_box_dimensions()
@@ -450,7 +514,36 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
     rows.append(make_row(align_split(hk_left, hk_right, inner_width), inner_width))
     rows.append(div_single)
 
-    modes_line = f"{CYAN_ACCENT}MODES:{RESET}   [1] Battery  [2] Quiet  [3] Balance  [4] Mid  [5] High  [6] Ultra"
+    # Dynamic mode button highlight in cockpit footer
+    active_idx = 3
+    if b1 >= 240:
+        active_idx = 6
+    elif b1 >= 75:
+        active_idx = 5
+    elif b1 >= 50:
+        active_idx = 4
+    elif b1 >= 30:
+        active_idx = 3
+    elif b1 >= 15:
+        active_idx = 2
+    else:
+        active_idx = 1
+
+    mode_defs_list = [
+        (1, "Battery", "\033[1;97;45m"),
+        (2, "Quiet",   "\033[1;30;42m"),
+        (3, "Balance", "\033[1;30;46m"),
+        (4, "Mid",     "\033[1;30;43m"),
+        (5, "High",    "\033[1;97;41m"),
+        (6, "Ultra",   "\033[1;97;41m"),
+    ]
+    mode_spans = []
+    for idx, name, bg_col in mode_defs_list:
+        if idx == active_idx:
+            mode_spans.append(f"{bg_col} [{idx}] {name} \033[0m")
+        else:
+            mode_spans.append(f"{MUTED_GRAY}[{idx}] {name}{RESET}")
+    modes_line = f"{WHITE_BOLD}MODES:{RESET}  " + " ".join(mode_spans)
     rows.append(make_row(modes_line, inner_width))
 
     acts_line = f"{CYAN_ACCENT}ACTIONS:{RESET} [F9] Game Shift Toggle  •  [1-6] Profiles  •  [Q] Exit Cockpit"
@@ -530,13 +623,17 @@ def run_continuous():
 
     prev_total, prev_idle = 0.0, 0.0
     aw_hwmon = get_hwmon()
+    needs_quick_redraw = False
 
     try:
         while True:
-            # Process non-blocking keyboard and escape sequences
+            # Event-driven non-blocking key wait: wakes up IMMEDIATELY (<1ms) on keypress,
+            # or times out after 0.75s (or 0.08s for quick transition) to refresh telemetry
+            timeout = 0.08 if needs_quick_redraw else 0.75
             needs_quick_redraw = False
+
             if fd is not None:
-                r, _, _ = select.select([sys.stdin], [], [], 0.0)
+                r, _, _ = select.select([sys.stdin], [], [], timeout)
                 if r:
                     try:
                         raw_bytes = os.read(fd, 1024)
@@ -544,38 +641,19 @@ def run_continuous():
                     except Exception:
                         text = ""
 
-                    if text.startswith('\x1b'):
-                        # Check exclusively for F9 key variations across all terminal emulators
-                        if '\x1b[20' in text or '\x1b[19' in text or '\x1b[21' in text:
-                            toggle_gameshift()
-                            needs_quick_redraw = True
-                        # ALL other escape sequences (arrows, mouse wheel, mouse clicks, reports)
-                        # are completely swallowed! NEVER EXIT on escape sequences!
-                    else:
-                        # Plain keyboard input
-                        if any(c in text for c in ['q', 'Q', 'x', 'X']):
-                            break
-                        elif '1' in text:
-                            apply_mode("battery")
-                            needs_quick_redraw = True
-                        elif '2' in text:
-                            apply_mode("quiet")
-                            needs_quick_redraw = True
-                        elif '3' in text:
-                            apply_mode("balance")
-                            needs_quick_redraw = True
-                        elif '4' in text:
-                            apply_mode("mid")
-                            needs_quick_redraw = True
-                        elif '5' in text:
-                            apply_mode("high")
-                            needs_quick_redraw = True
-                        elif '6' in text:
-                            apply_mode("ultra")
-                            needs_quick_redraw = True
-                        elif 'r' in text or 'R' in text:
-                            needs_quick_redraw = True
-                        # 'g'/'G' is replaced with F9 as requested
+                    action = decode_key(text)
+                    if action == 'QUIT':
+                        break
+                    elif isinstance(action, int) and 1 <= action <= 6:
+                        apply_mode_direct(action, aw_hwmon)
+                        needs_quick_redraw = True
+                    elif action == 'F9':
+                        toggle_gameshift_direct(aw_hwmon)
+                        needs_quick_redraw = True
+                    elif action == 'REFRESH':
+                        needs_quick_redraw = True
+            else:
+                time.sleep(0.75)
 
             prev_total, prev_idle, cpu_usage, cpu_mhz, cpu_temp = get_cpu_info(prev_total, prev_idle)
             gpu = get_gpu_info()
@@ -606,11 +684,6 @@ def run_continuous():
             # Move cursor to home (1,1) and draw frame
             sys.stdout.write("\033[H" + frame)
             sys.stdout.flush()
-
-            if needs_quick_redraw:
-                time.sleep(0.12)
-            else:
-                time.sleep(0.75)
 
     finally:
         cleanup()

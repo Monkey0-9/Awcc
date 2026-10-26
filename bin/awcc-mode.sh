@@ -36,38 +36,38 @@ if [[ -z "${MODE}" ]] || [[ "${MODE}" =~ ^- ]] || [[ "${MODE,,}" == "monitor" ]]
 fi
 
 case "${MODE,,}" in
-    battery|powersave|low|10|15|26)
+    1|battery|powersave|low|10|15|26)
         PROFILE="quiet"
         BOOST=10
         TITLE="BATTERY SAVER (Silent Whisper, Boost 10, ~1,000 RPM)"
         ;;
-    quiet|silent|20|35|51)
+    2|quiet|silent|20|35|51)
         PROFILE="quiet"
         BOOST=20
         TITLE="QUIET (Acoustic Silence, Boost 20, ~1,450 RPM)"
         ;;
-    balance|balanced|40|50|102)
+    3|balance|balanced|40|50|102)
         PROFILE="balanced"
         BOOST=40
         TITLE="BALANCE (Daily Productivity, Boost 40, ~1,980 RPM)"
         ;;
-    mid|65|60|153)
+    4|mid|65|60|153)
         PROFILE="performance"
         BOOST=65
         TITLE="MID (Intermediate Performance, Boost 65, ~3,100 RPM)"
         ;;
-    high|performance|85|80|90|204)
+    5|high|performance|85|80|90|204)
         PROFILE="performance"
         BOOST=85
         TITLE="HIGH PERFORMANCE (Sustained Workloads, Boost 85, ~4,200 RPM)"
         ;;
-    ultra|gmode|g-mode|max|255|100)
+    6|ultra|gmode|g-mode|max|255|100)
         PROFILE="performance"
         BOOST=255
         TITLE="ULTRA PERFORMANCE & GAME SHIFT (G-MODE Max Fans, Boost 255, 5,029 RPM)"
         ;;
     *)
-        echo "[-] Unknown mode '${MODE}'. Choose from: battery, quiet, balance, mid, high, ultra." >&2
+        echo "[-] Unknown mode '${MODE}'. Choose from: 1-6 or battery, quiet, balance, mid, high, ultra." >&2
         exit 1
         ;;
 esac
