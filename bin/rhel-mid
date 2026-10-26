@@ -1,0 +1,2 @@
+#!/bin/bash
+exec /home/unknownuser/Awcc/bin/set-profile-helper.sh balanced 102 "MID / BALANCED (Boost 102/255)"

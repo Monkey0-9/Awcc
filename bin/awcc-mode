@@ -1,0 +1,118 @@
+#!/bin/bash
+set -euo pipefail
+
+MODE="${1:-}"
+
+if [[ -z "${MODE}" ]]; then
+    echo "Usage: awcc-mode <battery|quiet|balance|high|ultra>"
+    echo "Or run one of the direct shortcuts:"
+    echo "  battery  - Power saver, fan boost 26/255 (10% step)"
+    echo "  quiet    - Silent acoustic operation, fan boost 51/255 (20% step)"
+    echo "  balance  - Standard everyday balance, fan boost 102/255 (40% step)"
+    echo "  high     - Heavy workloads / gaming, fan boost 204/255 (80% step)"
+    echo "  ultra    - Game Shift (G-Mode), fan boost 255/255 (100% max)"
+    exit 1
+fi
+
+AW_HWMON=""
+for d in /sys/class/hwmon/hwmon*; do
+    if [[ -f "$d/name" ]] && [[ "$(cat "$d/name" 2>/dev/null)" == "alienware_wmi" ]]; then
+        AW_HWMON="$d"
+        break
+    fi
+done
+
+case "${MODE,,}" in
+    battery|powersave|low)
+        PROFILE="quiet"
+        BOOST=26
+        TITLE="BATTERY SAVER (Minimum Power, Boost 26/255)"
+        ;;
+    quiet|silent)
+        PROFILE="quiet"
+        BOOST=51
+        TITLE="QUIET (Silent Acoustic Operation, Boost 51/255)"
+        ;;
+    balance|balanced|mid)
+        PROFILE="balanced"
+        BOOST=102
+        TITLE="BALANCE (Daily Productivity, Boost 102/255)"
+        ;;
+    high|performance)
+        PROFILE="performance"
+        BOOST=204
+        TITLE="HIGH PERFORMANCE (Sustained Workloads, Boost 204/255)"
+        ;;
+    ultra|gmode|g-mode|max)
+        PROFILE="performance"
+        BOOST=255
+        TITLE="ULTRA PERFORMANCE & GAME SHIFT (G-MODE Max Fans, Boost 255/255)"
+        ;;
+    step1|25|26)
+        PROFILE="quiet"
+        BOOST=26
+        TITLE="STEP 1 (Boost 26/255)"
+        ;;
+    step2|51)
+        PROFILE="quiet"
+        BOOST=51
+        TITLE="STEP 2 (Boost 51/255)"
+        ;;
+    step3|102)
+        PROFILE="balanced"
+        BOOST=102
+        TITLE="STEP 3 (Boost 102/255)"
+        ;;
+    step4|153)
+        PROFILE="performance"
+        BOOST=153
+        TITLE="STEP 4 (Boost 153/255)"
+        ;;
+    step5|204)
+        PROFILE="performance"
+        BOOST=204
+        TITLE="STEP 5 (Boost 204/255)"
+        ;;
+    step6|255)
+        PROFILE="performance"
+        BOOST=255
+        TITLE="STEP 6 (Boost 255/255)"
+        ;;
+    *)
+        echo "[-] Unknown mode '${MODE}'. Choose from: battery (26), quiet (51), balance (102), high (204), ultra (255), or 153." >&2
+        exit 1
+        ;;
+esac
+
+echo "================================================================="
+echo " AWCC Linux: Actuating ${TITLE}"
+echo " Target Machine: Dell G15 5530 (RHEL 10.2)"
+echo "================================================================="
+
+# 1. Apply Platform Profile
+echo "[1/3] Setting Platform Profile to '${PROFILE}'..."
+if [[ -w /sys/firmware/acpi/platform_profile ]]; then
+    echo "${PROFILE}" > /sys/firmware/acpi/platform_profile
+else
+    sudo bash -c "echo '${PROFILE}' > /sys/firmware/acpi/platform_profile" 2>/dev/null || echo "[!] Non-root, current: $(cat /sys/firmware/acpi/platform_profile 2>/dev/null)"
+fi
+
+# 2. Apply Fan Boost
+echo "[2/3] Setting Fan Boost to ${BOOST}/255..."
+if [[ -n "${AW_HWMON}" ]]; then
+    if [[ -w "${AW_HWMON}/fan1_boost" ]]; then
+        echo "${BOOST}" > "${AW_HWMON}/fan1_boost"
+        echo "${BOOST}" > "${AW_HWMON}/fan2_boost"
+    else
+        sudo bash -c "echo ${BOOST} > ${AW_HWMON}/fan1_boost && echo ${BOOST} > ${AW_HWMON}/fan2_boost && chmod 0666 ${AW_HWMON}/fan*_boost /sys/firmware/acpi/platform_profile"
+    fi
+    echo "[+] Hardware Boost applied: Fan 1 = $(cat "${AW_HWMON}/fan1_boost")/255 | Fan 2 = $(cat "${AW_HWMON}/fan2_boost")/255"
+fi
+
+# 3. Present Real-time Telemetry
+echo "[3/3] Current System & Thermal Status:"
+awccctl status
+
+echo "================================================================="
+echo "[+] ${TITLE} activated successfully."
+echo "================================================================="

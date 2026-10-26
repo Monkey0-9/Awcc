@@ -1,0 +1,27 @@
+# Maintainer: AWCC Linux Team <support@awcc-linux.org>
+pkgname=awcc-linux-dkms
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="AWCC Fan Control and Platform Profile Management for Dell Laptops (DKMS)"
+arch=('x86_64')
+url="https://github.com/awcc-linux/awcc-linux"
+license=('GPL2' 'MIT')
+depends=('dkms' 'systemd')
+makedepends=('cargo' 'rust' 'linux-headers')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cargo build --release --manifest-path Cargo.toml
+}
+
+package() {
+    install -Dm755 target/release/awccctl "$pkgdir/usr/bin/awccctl"
+    install -Dm755 target/release/awccd "$pkgdir/usr/bin/awccd"
+    install -Dm755 bin/rhel-performance "$pkgdir/usr/bin/rhel-performance"
+    install -Dm755 bin/rhel-balanced "$pkgdir/usr/bin/rhel-balanced"
+    install -Dm644 systemd/awccd.service "$pkgdir/usr/lib/systemd/system/awccd.service"
+
+    mkdir -p "$pkgdir/usr/src/alienware-wmi-1.0.0"
+    cp -r kernel/* "$pkgdir/usr/src/alienware-wmi-1.0.0/"
+}

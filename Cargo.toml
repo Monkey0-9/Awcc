@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/awcc-core",
+    "crates/awccctl",
+    "crates/awccd",
+]
+resolver = "2"

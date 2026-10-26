@@ -1,0 +1,29 @@
+# Rust Target
+target/
+Cargo.lock
+
+# Kernel build artifacts
+*.o
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+*.order
+*.symvers
+.*.cmd
+.module-common.o
+..module-common.o.cmd
+kernel/certs/*.priv
+kernel/certs/*.der
+kernel/certs/*.conf
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Editor & OS temporary files
+*~
+*.swp
+.DS_Store
+.serena/

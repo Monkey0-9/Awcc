@@ -1,0 +1,2 @@
+#!/bin/bash
+exec /home/unknownuser/Awcc/bin/awcc-mode.sh "quiet" "$@"

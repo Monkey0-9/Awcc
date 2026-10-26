@@ -1,0 +1,2 @@
+#!/bin/bash
+exec /home/unknownuser/Awcc/bin/set-profile-helper.sh performance 204 "HIGH PERFORMANCE (Boost 204/255)"

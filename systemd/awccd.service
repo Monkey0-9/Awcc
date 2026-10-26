@@ -1,0 +1,23 @@
+[Unit]
+Description=AWCC Linux Autonomous Fan & Thermal Safety Daemon
+Documentation=https://github.com/awcc-linux/awcc-linux
+After=network.target systemd-udev-settle.service suspend.target hibernate.target hybrid-sleep.target
+Wants=systemd-udev-settle.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/awccd
+Restart=always
+RestartSec=3s
+KillMode=process
+TimeoutStopSec=5s
+
+# Hardening & Permissions
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_SYS_ADMIN
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/sys/class/hwmon /sys/firmware/acpi /sys/devices/platform /tmp
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

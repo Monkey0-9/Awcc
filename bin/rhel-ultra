@@ -1,0 +1,2 @@
+#!/bin/bash
+exec /home/unknownuser/Awcc/bin/set-profile-helper.sh performance 255 "ULTRA PERFORMANCE (Boost 255/255)"

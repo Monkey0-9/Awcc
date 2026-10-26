@@ -1,0 +1,2 @@
+#!/bin/bash
+exec /home/unknownuser/Awcc/bin/set-profile-helper.sh quiet 51 "QUIET (Boost 51/255)"

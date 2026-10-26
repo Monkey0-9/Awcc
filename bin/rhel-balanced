@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# rhel-balanced: Restores Dell G15 5530 Balanced Profile & Releases Fan Boost
+
+AWCCCTL="/home/unknownuser/Awcc/target/release/awccctl"
+if [[ ! -x "${AWCCCTL}" ]]; then
+    AWCCCTL="awccctl"
+fi
+
+echo "========================================================"
+echo " AWCC Linux: Restoring Balanced Profile & Firmware Fans"
+echo " Target Machine: Dell G15 5530 (RHEL 10.2)"
+echo "========================================================"
+
+# Step 1: Set Platform Profile to balanced
+echo "[1/3] Setting Platform Profile to 'balanced'..."
+if [[ -w /sys/firmware/acpi/platform_profile ]]; then
+    echo "balanced" > /sys/firmware/acpi/platform_profile
+else
+    echo "balanced" | sudo tee /sys/firmware/acpi/platform_profile > /dev/null || true
+fi
+
+# Step 2: Release Fan Boost
+echo "[2/3] Releasing fan boost (0/255)..."
+if command -v "${AWCCCTL}" >/dev/null 2>&1; then
+    "${AWCCCTL}" fan release || true
+fi
+
+# Step 3: Present Live Telemetry Summary
+echo "[3/3] Current System & Fan Status:"
+if command -v "${AWCCCTL}" >/dev/null 2>&1; then
+    "${AWCCCTL}" status
+fi
+
+echo "========================================================"
+echo "[+] rhel-balanced restoration completed."
+echo "========================================================"
