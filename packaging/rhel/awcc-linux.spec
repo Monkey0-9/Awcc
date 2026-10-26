@@ -2,8 +2,8 @@ Name:           awcc-linux
 Version:        2.5.0
 Release:        1%{?dist}
 Summary:        Alienware Command Center (AWCC) & Game Shift Control Suite for Dell Laptops on Linux
-License:        GPL-2.0-only AND MIT
-URL:            https://github.com/awcc-linux/awcc-linux
+License:        GPL-2.0-or-later AND MIT
+URL:            https://github.com/Monkey0-9/Awcc
 Source0:        %{name}-%{version}.tar.gz
 
 BuildRequires:  gcc make cargo rust openssl-devel
