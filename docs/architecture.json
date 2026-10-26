@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Universal Linux Hardware Performance & Thermal Control Architecture",
+    "output": "architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "User / Operator", "sublabel": "Interactive & Shell", "pos": [40, 260], "size": [130, 60] },
+    { "id": "tui", "type": "frontend", "label": "TrueColor Cockpit", "sublabel": "awcc-lux-dashboard", "pos": [240, 160], "size": [150, 60], "tag": "24-bit RGB" },
+    { "id": "gui", "type": "frontend", "label": "Desktop GUI", "sublabel": "awcc-gui (GTK4)", "pos": [240, 260], "size": [150, 60], "tag": "Libadwaita" },
+    { "id": "cli", "type": "frontend", "label": "CLI & Shortcuts", "sublabel": "awccctl / awcc-mode", "pos": [240, 360], "size": [150, 60], "tag": "Rust + Bash" },
+    { "id": "daemon", "type": "backend", "label": "Thermal Governor", "sublabel": "awccd service", "pos": [460, 260], "size": [150, 60], "tag": "Anti-Hunt Damping" },
+    { "id": "core", "type": "backend", "label": "Hardware Engine", "sublabel": "crates/awcc-core", "pos": [680, 260], "size": [160, 60], "tag": "Discovery & Tiers" },
+    { "id": "providers", "type": "backend", "label": "Vendor Providers", "sublabel": "Dell, ASUS, Lenovo, etc.", "pos": [910, 260], "size": [170, 60], "tag": "Provider Registry" },
+    { "id": "sysfs", "type": "cloud", "label": "Linux Sysfs / WMI", "sublabel": "platform_profile / hwmon", "pos": [1140, 260], "size": [160, 60], "tag": "Kernel Boundary" },
+    { "id": "silicon", "type": "database", "label": "Silicon & Turbines", "sublabel": "CPU, GPU, RAM, Fans", "pos": [1360, 260], "size": [150, 60], "tag": "Physical Hardware" }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "User Interface Layer", "wraps": ["tui", "gui", "cli"] },
+    { "kind": "region", "label": "Core Engine & Governor Layer", "wraps": ["daemon", "core", "providers"] },
+    { "kind": "region", "label": "Kernel & Physical Hardware", "wraps": ["sysfs", "silicon"] }
+  ],
+  "connections": [
+    { "id": "user-to-tui", "from": "user", "to": "tui", "label": "interactive" },
+    { "id": "user-to-gui", "from": "user", "to": "gui", "label": "desktop" },
+    { "id": "user-to-cli", "from": "user", "to": "cli", "label": "commands" },
+    { "id": "tui-to-core", "from": "tui", "to": "core", "label": "telemetry" },
+    { "id": "gui-to-core", "from": "gui", "to": "core", "label": "IPC / JSON" },
+    { "id": "cli-to-core", "from": "cli", "to": "core", "label": "commands" },
+    { "id": "daemon-to-core", "from": "daemon", "to": "core", "label": "governor loop" },
+    { "id": "core-to-providers", "from": "core", "to": "providers", "label": "delegation" },
+    { "id": "providers-to-sysfs", "from": "providers", "to": "sysfs", "label": "sysfs / ACPI", "variant": "security" },
+    { "id": "sysfs-to-silicon", "from": "sysfs", "to": "silicon", "label": "PWM / WMAX", "variant": "emphasis" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Client Interfaces", "items": ["Cinema-grade TrueColor 24-bit TUI cockpit", "GTK4/Libadwaita desktop GUI with graphical gauges", "Fast zero-dependency CLI (awccctl) with JSON streaming"] },
+    { "dot": "emerald", "title": "Universal Core", "items": ["Dynamic DMI detection across Dell, ASUS, Lenovo, HP, Acer, MSI, System76, Framework", "Discrete verification tiers with graceful degradation", "Autonomous hysteresis damping governor (awccd)"] },
+    { "dot": "rose", "title": "Reverse-Engineered Telemetry", "items": ["Dell Data Vault (dell_wmi_ddv) & SMM sensor matrix", "Dual SODIMM RAM temperatures (temp5 & temp6)", "Instantaneous power draw filtering (Intel RAPL + NVIDIA SMI)"] }
+  ]
+}
