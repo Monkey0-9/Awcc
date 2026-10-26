@@ -282,19 +282,19 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
     box_width, inner_width, gauge_width = get_box_dimensions()
     gmode_active = (b1 >= 240)
 
-    if b1 >= 250:
+    if b1 >= 240:
         mode_label = "ULTRA (100% Boost)"
         mode_color = CRIMSON_RED
-    elif b1 >= 200:
+    elif b1 >= 75:
         mode_label = "HIGH (80% Boost)"
         mode_color = BLAZE_ORANGE
-    elif b1 >= 150:
+    elif b1 >= 55:
         mode_label = "MID (60% Boost)"
         mode_color = SOLAR_AMBER
-    elif b1 >= 100:
+    elif b1 >= 40:
         mode_label = "BALANCE (40% Boost)"
         mode_color = CYAN_BRIGHT
-    elif b1 >= 50:
+    elif b1 >= 20:
         mode_label = "QUIET (20% Boost)"
         mode_color = NEON_GREEN
     else:
@@ -371,13 +371,21 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
     cool_right = f"{MUTED_GRAY}MAX CEILING: 5,029 RPM{RESET}"
     rows.append(make_row(align_split(cool_left, cool_right, inner_width), inner_width))
 
+    def boost_pct_str(b):
+        if b >= 240: return "100%"
+        if b >= 75:  return " 80%"
+        if b >= 55:  return " 60%"
+        if b >= 40:  return " 40%"
+        if b >= 20:  return " 20%"
+        return " 10%"
+
     f1_val = f"{WHITE_BOLD}{r1:4d}RPM{RESET}"
-    f1_mid = f"Boost: {CYAN_BRIGHT}{b1:3d} ({int(b1/2.55):2d}%){RESET}"
+    f1_mid = f"Boost: {CYAN_BRIGHT}{b1:3d} ({boost_pct_str(b1)}){RESET}"
     f1_right = f"{MUTED_GRAY}Max: 5,029 RPM{RESET}"
     rows.append(format_telemetry_line(f"{WHITE_BOLD}FAN 1 (CPU){RESET}", gauge_f1, f1_val, f1_mid, f1_right, inner_width))
 
     f2_val = f"{WHITE_BOLD}{r2:4d}RPM{RESET}"
-    f2_mid = f"Boost: {CYAN_BRIGHT}{b2:3d} ({int(b2/2.55):2d}%){RESET}"
+    f2_mid = f"Boost: {CYAN_BRIGHT}{b2:3d} ({boost_pct_str(b2)}){RESET}"
     f2_right = f"{MUTED_GRAY}Max: 5,029 RPM{RESET}"
     rows.append(format_telemetry_line(f"{WHITE_BOLD}FAN 2 (GPU){RESET}", gauge_f2, f2_val, f2_mid, f2_right, inner_width))
     rows.append(div_double)

@@ -36,35 +36,35 @@ if [[ -z "${MODE}" ]] || [[ "${MODE}" =~ ^- ]] || [[ "${MODE,,}" == "monitor" ]]
 fi
 
 case "${MODE,,}" in
-    battery|powersave|low|26)
+    battery|powersave|low|15|10|26)
         PROFILE="quiet"
-        BOOST=26
-        TITLE="BATTERY SAVER (Minimum Power, Boost 26/255)"
+        BOOST=15
+        TITLE="BATTERY SAVER (Silent Whisper, Boost 15, ~1,250 RPM)"
         ;;
-    quiet|silent|51)
+    quiet|silent|35|20|51)
         PROFILE="quiet"
-        BOOST=51
-        TITLE="QUIET (Silent Acoustic Operation, Boost 51/255)"
+        BOOST=35
+        TITLE="QUIET (Acoustic Silence, Boost 35, ~1,650 RPM)"
         ;;
-    balance|balanced|102)
+    balance|balanced|50|40|102)
         PROFILE="balanced"
-        BOOST=102
-        TITLE="BALANCE (Daily Productivity, Boost 102/255)"
+        BOOST=50
+        TITLE="BALANCE (Daily Productivity, Boost 50, ~2,460 RPM)"
         ;;
-    mid|153)
+    mid|65|60|153)
         PROFILE="performance"
-        BOOST=153
-        TITLE="MID (Intermediate Performance, Boost 153/255)"
+        BOOST=65
+        TITLE="MID (Intermediate Performance, Boost 65, ~3,400 RPM)"
         ;;
-    high|performance|204)
+    high|performance|85|80|204)
         PROFILE="performance"
-        BOOST=204
-        TITLE="HIGH PERFORMANCE (Sustained Workloads, Boost 204/255)"
+        BOOST=85
+        TITLE="HIGH PERFORMANCE (Sustained Workloads, Boost 85, ~4,200 RPM)"
         ;;
-    ultra|gmode|g-mode|max|255)
+    ultra|gmode|g-mode|max|255|100)
         PROFILE="performance"
         BOOST=255
-        TITLE="ULTRA PERFORMANCE & GAME SHIFT (G-MODE Max Fans, Boost 255/255)"
+        TITLE="ULTRA PERFORMANCE & GAME SHIFT (G-MODE Max Fans, Boost 255, 5,029 RPM)"
         ;;
     *)
         echo "[-] Unknown mode '${MODE}'. Choose from: battery, quiet, balance, mid, high, ultra." >&2
