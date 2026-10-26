@@ -47,13 +47,6 @@ install -m 0755 bin/awcc-lux-dashboard.py $RPM_BUILD_ROOT%{_bindir}/awcc-lux-das
 install -d $RPM_BUILD_ROOT%{_unitdir}
 install -m 0644 systemd/awccd.service $RPM_BUILD_ROOT%{_unitdir}/awccd.service
 
-# Udev Rules
-install -d $RPM_BUILD_ROOT%{_udevrulesdir}
-cat > $RPM_BUILD_ROOT%{_udevrulesdir}/99-awcc-hwmon.rules << 'EOF'
-ACTION=="add", SUBSYSTEM=="hwmon", ATTR{name}=="alienware_wmi", RUN+="/bin/chmod 0666 /sys%p/fan1_boost /sys%p/fan2_boost"
-ACTION=="add", SUBSYSTEM=="platform", KERNEL=="alienware-wmi", RUN+="/bin/chmod 0666 /sys/firmware/acpi/platform_profile"
-EOF
-
 # DKMS Driver Source
 install -d $RPM_BUILD_ROOT/usr/src/alienware-wmi-%{version}
 cp -r kernel/* $RPM_BUILD_ROOT/usr/src/alienware-wmi-%{version}/
@@ -63,8 +56,6 @@ cp -r kernel/* $RPM_BUILD_ROOT/usr/src/alienware-wmi-%{version}/
 dkms add -m alienware-wmi -v %{version} || true
 dkms build -m alienware-wmi -v %{version} || true
 dkms install -m alienware-wmi -v %{version} || true
-udevadm control --reload-rules || true
-udevadm trigger --subsystem-match=hwmon || true
 %systemd_post awccd.service
 
 %preun
@@ -90,7 +81,6 @@ fi
 %{_bindir}/gmode
 %{_bindir}/awcc-lux-dashboard.py
 %{_unitdir}/awccd.service
-%{_udevrulesdir}/99-awcc-hwmon.rules
 /usr/src/alienware-wmi-%{version}
 
 %changelog
@@ -98,5 +88,5 @@ fi
 - Complete 6-tier fan and power profile matrix (Battery, Quiet, Balance, Mid, High, Ultra)
 - Direct integrated TrueColor Cybernetic Cockpit with East Asian width support
 - Hardware Game Shift (F9) instantaneous async toggle (<120ms) with desktop OSD
-- Unprivileged 0666 udev rules for zero-sudo daily operation
+- Hardened root/broker privilege boundary for fan controls
 - Anti-hunt hysteresis damping governor in awccd daemon

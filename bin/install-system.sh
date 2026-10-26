@@ -30,12 +30,21 @@ depmod -a
 echo "[3/6] Configuring module auto-load on boot (/etc/modules-load.d/alienware-wmi.conf)..."
 echo "alienware-wmi" > /etc/modules-load.d/alienware-wmi.conf
 
-echo "[4/6] Configuring udev rules for unprivileged hardware telemetry (/etc/udev/rules.d/99-awcc-hwmon.rules)..."
-cat > /etc/udev/rules.d/99-awcc-hwmon.rules << 'RULES'
-ACTION=="add", SUBSYSTEM=="hwmon", ATTR{name}=="alienware_wmi", RUN+="/bin/chmod 0666 /sys%p/fan1_boost /sys%p/fan2_boost"
-ACTION=="add", SUBSYSTEM=="platform", KERNEL=="alienware-wmi", RUN+="/bin/chmod 0666 /sys/firmware/acpi/platform_profile"
-RULES
-udevadm control --reload-rules || true
+echo "[4/6] Ensuring secure sysfs permissions (no world-writable controls)..."
+if [[ -f /etc/udev/rules.d/99-awcc-hwmon.rules ]]; then
+    rm -f /etc/udev/rules.d/99-awcc-hwmon.rules
+    udevadm control --reload-rules 2>/dev/null || true
+fi
+
+# Reset any stale world-writable sysfs nodes back to standard root permissions (0644)
+for d in /sys/class/hwmon/hwmon*; do
+    if [[ -f "$d/name" ]] && [[ "$(cat "$d/name" 2>/dev/null)" == "alienware_wmi" ]]; then
+        chmod 0644 "$d"/fan*_boost 2>/dev/null || true
+    fi
+done
+if [[ -f /sys/firmware/acpi/platform_profile ]]; then
+    chmod 0644 /sys/firmware/acpi/platform_profile 2>/dev/null || true
+fi
 
 echo "[5/6] Installing system-wide CLI binaries in /usr/local/bin..."
 BIN_LIST=(
@@ -68,7 +77,8 @@ modprobe alienware-wmi || insmod "${DEST_DIR}/alienware-wmi.ko" || true
 echo "=========================================================================="
 echo "[+] AWCC Linux Installation Complete!"
 echo "    - Driver: Signed & Auto-loading via /etc/modules-load.d/"
-echo "    - Permissions: Unprivileged 0666 via udev rules"
+echo "    - Security: Secure root-only sysfs permissions (no world-writable controls)"
+echo "    - Actuation: Root / sudo required for fan writes; telemetry readable by all users"
 echo "    - Commands available system-wide: awcc-mode, awcc-battery, awcc-quiet,"
 echo "      awcc-balance, awcc-mid, awcc-high, awcc-ultra, gmode"
 echo "=========================================================================="

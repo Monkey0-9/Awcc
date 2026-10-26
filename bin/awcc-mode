@@ -104,7 +104,7 @@ if [[ -n "${AW_HWMON}" ]]; then
         echo "${BOOST}" > "${AW_HWMON}/fan1_boost"
         echo "${BOOST}" > "${AW_HWMON}/fan2_boost"
     else
-        sudo bash -c "echo ${BOOST} > ${AW_HWMON}/fan1_boost && echo ${BOOST} > ${AW_HWMON}/fan2_boost && chmod 0666 ${AW_HWMON}/fan*_boost /sys/firmware/acpi/platform_profile"
+        sudo bash -c "echo ${BOOST} > ${AW_HWMON}/fan1_boost && echo ${BOOST} > ${AW_HWMON}/fan2_boost"
     fi
     echo "[+] Hardware Boost applied: Fan 1 = $(cat "${AW_HWMON}/fan1_boost")/255 | Fan 2 = $(cat "${AW_HWMON}/fan2_boost")/255"
 fi

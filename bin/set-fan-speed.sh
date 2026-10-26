@@ -3,6 +3,11 @@ set -euo pipefail
 
 TARGET_BOOST="${1:-0}"
 
+if ! [[ "${TARGET_BOOST}" =~ ^[0-9]+$ ]] || [ "${TARGET_BOOST}" -lt 0 ] || [ "${TARGET_BOOST}" -gt 255 ]; then
+    echo "[-] Error: Boost value must be an integer between 0 and 255 (got '${TARGET_BOOST}')." >&2
+    exit 1
+fi
+
 AW_HWMON=""
 for d in /sys/class/hwmon/hwmon*; do
     if [[ -f "$d/name" ]] && [[ "$(cat "$d/name" 2>/dev/null)" == "alienware_wmi" ]]; then
@@ -20,9 +25,8 @@ echo "[*] Setting fan boost to ${TARGET_BOOST}/255..."
 if [[ $EUID -eq 0 ]]; then
     echo "${TARGET_BOOST}" > "${AW_HWMON}/fan1_boost"
     echo "${TARGET_BOOST}" > "${AW_HWMON}/fan2_boost"
-    chmod 0666 "${AW_HWMON}"/fan*_boost /sys/firmware/acpi/platform_profile 2>/dev/null || true
 else
-    sudo bash -c "echo ${TARGET_BOOST} > ${AW_HWMON}/fan1_boost && echo ${TARGET_BOOST} > ${AW_HWMON}/fan2_boost && chmod 0666 ${AW_HWMON}/fan*_boost /sys/firmware/acpi/platform_profile"
+    sudo bash -c "echo ${TARGET_BOOST} > ${AW_HWMON}/fan1_boost && echo ${TARGET_BOOST} > ${AW_HWMON}/fan2_boost"
 fi
 
 echo "[+] Current Boost: $(cat "${AW_HWMON}/fan1_boost")/255"
