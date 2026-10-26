@@ -83,11 +83,13 @@ for b in "${BINS[@]}"; do
     rm -f "/usr/local/bin/${b}"
 done
 
-# 4. Remove FreeDesktop application entry and icons
-echo "[4/6] Removing desktop launchers and icons..."
+# 4. Remove FreeDesktop application entry, icons, and PolicyKit policy
+echo "[4/6] Removing desktop launchers, icons, and policy files..."
 rm -f /usr/share/applications/awcc-gui.desktop
 rm -f /usr/local/share/applications/awcc-gui.desktop
 rm -f /usr/share/icons/hicolor/scalable/apps/awcc-gui.svg
+rm -f /usr/share/polkit-1/actions/io.github.monkey0_9.awcc.policy
+rm -f /etc/sudoers.d/awcc-linux
 
 # 5. Remove kernel module extra if installed
 echo "[5/6] Cleaning extra kernel modules..."

@@ -156,6 +156,18 @@ if [[ -f "${REPO_DIR}/packaging/icons/awcc-gui.svg" ]]; then
     cp -f "${REPO_DIR}/packaging/icons/awcc-gui.svg" /usr/share/icons/hicolor/scalable/apps/awcc-gui.svg
 fi
 
+# Install PolicyKit policy and sudoers configuration
+if [[ -d /usr/share/polkit-1/actions ]] && [[ -f "${REPO_DIR}/packaging/io.github.monkey0_9.awcc.policy" ]]; then
+    echo "[*] Installing PolicyKit action policy..."
+    cp -f "${REPO_DIR}/packaging/io.github.monkey0_9.awcc.policy" /usr/share/polkit-1/actions/io.github.monkey0_9.awcc.policy
+    chmod 0644 /usr/share/polkit-1/actions/io.github.monkey0_9.awcc.policy
+fi
+
+if [[ -x "${REPO_DIR}/bin/setup-sudoers.sh" ]]; then
+    echo "[*] Configuring sudoers rules..."
+    "${REPO_DIR}/bin/setup-sudoers.sh" || true
+fi
+
 # 8. Configure System Daemon & Service
 echo "[6/7] Configuring background thermal governor service..."
 if pidof systemd >/dev/null 2>&1 || [[ -d /run/systemd/system ]]; then

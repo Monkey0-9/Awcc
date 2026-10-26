@@ -28,6 +28,7 @@ rm -rf $RPM_BUILD_ROOT
 install -d $RPM_BUILD_ROOT%{_bindir}
 install -m 0755 target/release/awccctl $RPM_BUILD_ROOT%{_bindir}/awccctl
 install -m 0755 target/release/awccd $RPM_BUILD_ROOT%{_bindir}/awccd
+install -m 0755 bin/awcc-gui $RPM_BUILD_ROOT%{_bindir}/awcc-gui
 
 # Shell wrappers and governors
 install -m 0755 bin/awcc-mode.sh $RPM_BUILD_ROOT%{_bindir}/awcc-mode
@@ -44,6 +45,14 @@ ln -sf %{_bindir}/awcc-gameshift-toggle $RPM_BUILD_ROOT%{_bindir}/gmode
 
 # Telemetry Cockpit
 install -m 0755 bin/awcc-lux-dashboard.py $RPM_BUILD_ROOT%{_bindir}/awcc-lux-dashboard.py
+
+# Desktop Entry, Icon, and PolicyKit Policy
+install -d $RPM_BUILD_ROOT%{_datadir}/applications
+install -m 0644 packaging/awcc-gui.desktop $RPM_BUILD_ROOT%{_datadir}/applications/awcc-gui.desktop
+install -d $RPM_BUILD_ROOT%{_datadir}/icons/hicolor/scalable/apps
+install -m 0644 packaging/icons/awcc-gui.svg $RPM_BUILD_ROOT%{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
+install -d $RPM_BUILD_ROOT%{_datadir}/polkit-1/actions
+install -m 0644 packaging/io.github.monkey0_9.awcc.policy $RPM_BUILD_ROOT%{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
 
 # Systemd Units
 install -d $RPM_BUILD_ROOT%{_unitdir}
@@ -72,6 +81,7 @@ fi
 %files
 %{_bindir}/awccctl
 %{_bindir}/awccd
+%{_bindir}/awcc-gui
 %{_bindir}/awcc-mode
 %{_bindir}/awcc-track
 %{_bindir}/awcc-monitor
@@ -85,6 +95,9 @@ fi
 %{_bindir}/gmode
 %{_bindir}/awcc-lux-dashboard.py
 %{_unitdir}/awccd.service
+%{_datadir}/applications/awcc-gui.desktop
+%{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
+%{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
 /usr/src/alienware-wmi-%{version}
 
 %changelog

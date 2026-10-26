@@ -40,6 +40,9 @@ package() {
     install -Dm644 packaging/awcc-gui.desktop "$pkgdir/usr/share/applications/awcc-gui.desktop"
     install -Dm644 packaging/icons/awcc-gui.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/awcc-gui.svg"
 
+    # PolicyKit Policy
+    install -Dm644 packaging/io.github.monkey0_9.awcc.policy "$pkgdir/usr/share/polkit-1/actions/io.github.monkey0_9.awcc.policy"
+
     # Systemd Service
     install -Dm644 systemd/awccd.service "$pkgdir/usr/lib/systemd/system/awccd.service"
 

@@ -10,6 +10,7 @@ import os
 import json
 import subprocess
 import re
+import shutil
 
 VERSION = "0.3.0"
 
@@ -45,13 +46,17 @@ def find_awccctl_bin():
     user_bin = os.path.expanduser("~/.local/bin/awccctl")
     if os.path.isfile(user_bin) and os.access(user_bin, os.X_OK):
         return user_bin
-    # 3. Check debug build
+    # 3. Check system bins
+    for sbin in ["/usr/local/bin/awccctl", "/usr/bin/awccctl"]:
+        if os.path.isfile(sbin) and os.access(sbin, os.X_OK):
+            return sbin
+    # 4. Check debug build
     repo_bin = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "target", "debug", "awccctl")
     if os.path.isfile(repo_bin) and os.access(repo_bin, os.X_OK):
         return repo_bin
-    system_bin = "/usr/bin/awccctl"
-    if os.path.isfile(system_bin) and os.access(system_bin, os.X_OK):
-        return system_bin
+    found = shutil.which("awccctl")
+    if found:
+        return found
     return "awccctl"
 
 class AwccApp(Adw.Application):
@@ -67,6 +72,41 @@ class AwccApp(Adw.Application):
         self.caps = self.query_capabilities()
         self.telemetry = self.query_telemetry()
         self.updating = False
+
+    def run_privileged(self, cmd_args):
+        """
+        Executes a hardware actuation command with clean privilege escalation:
+        1. Direct execution (if running as root or sysfs node is writable)
+        2. Passwordless sudo (sudo -n)
+        3. PolicyKit desktop GUI authentication (pkexec)
+        """
+        try:
+            res = subprocess.run(cmd_args, capture_output=True, text=True, timeout=5)
+            if res.returncode == 0:
+                return res
+        except Exception as e:
+            res = subprocess.CompletedProcess(cmd_args, 1, stderr=str(e), stdout="")
+
+        err_lower = ((res.stderr or "") + (res.stdout or "")).lower()
+        if "permission denied" in err_lower or "permissiondenied" in err_lower or res.returncode != 0:
+            # Try passwordless sudo
+            try:
+                sudo_res = subprocess.run(["sudo", "-n"] + cmd_args, capture_output=True, text=True, timeout=5)
+                if sudo_res.returncode == 0:
+                    return sudo_res
+            except Exception:
+                pass
+
+            # Try pkexec for native GUI PolicyKit authentication prompt
+            pkexec_path = shutil.which("pkexec")
+            if pkexec_path:
+                try:
+                    pk_res = subprocess.run([pkexec_path] + cmd_args, capture_output=True, text=True, timeout=30)
+                    return pk_res
+                except Exception as e:
+                    return subprocess.CompletedProcess(cmd_args, 1, stderr=f"Authentication error: {e}", stdout="")
+
+        return res
 
     def query_capabilities(self):
         try:
@@ -123,6 +163,14 @@ class AwccApp(Adw.Application):
                     "reported_max_rpm": 4800,
                     "requested_boost": 0,
                     "readback_boost": 0
+                },
+                {
+                    "fan_index": 2,
+                    "label": "GPU Fan",
+                    "current_rpm": 1500,
+                    "reported_max_rpm": 4800,
+                    "requested_boost": 0,
+                    "readback_boost": 0
                 }
             ]
         }
@@ -131,10 +179,24 @@ class AwccApp(Adw.Application):
         self.win = Adw.ApplicationWindow(application=self)
         self.win.set_default_size(780, 720)
 
-        vendor = self.caps.get("vendor", "System")
-        product = self.caps.get("product", "Hardware")
-        tier = self.caps.get("tier", "Generic Linux")
-        self.win.set_title(f"AWCC Hardware Control — {vendor} {product}")
+        raw_vendor = self.caps.get("vendor", "System")
+        raw_product = self.caps.get("product", "Hardware")
+        clean_vendor = re.sub(r'(?i)\s+(inc\.?|ltd\.?|corp\.?|corporation)', '', str(raw_vendor)).strip()
+        if str(raw_product).lower().startswith(clean_vendor.lower()):
+            display_machine = str(raw_product)
+        else:
+            display_machine = f"{clean_vendor} {raw_product}"
+
+        raw_tier = str(self.caps.get("tier", "Generic Linux"))
+        tier_map = {
+            "Tier1PhysicallyVerified": "Tier 1: Physically Verified",
+            "Tier2CommunitySupported": "Tier 2: Community Supported",
+            "Tier3GenericLinuxFallback": "Tier 3: Generic Linux",
+            "Tier4Unsupported": "Tier 4: Unsupported"
+        }
+        display_tier = tier_map.get(raw_tier, raw_tier)
+
+        self.win.set_title(f"AWCC Hardware Control — {display_machine}")
 
         # Main Layout
         content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -144,7 +206,7 @@ class AwccApp(Adw.Application):
         header = Adw.HeaderBar()
         title_widget = Adw.WindowTitle(
             title="AWCC Hardware Control",
-            subtitle=f"{vendor} {product} • {tier}"
+            subtitle=f"{display_machine} • {display_tier}"
         )
         header.set_title_widget(title_widget)
         content_box.append(header)
@@ -219,6 +281,7 @@ class AwccApp(Adw.Application):
             description="Monitors tachometer RPM readouts and applies manual boost overrides."
         )
         pref_page.add(fan_group)
+        self.fan_group = fan_group
 
         self.fan_rows = {}
         self.fan_gauges = {}
@@ -497,9 +560,27 @@ class AwccApp(Adw.Application):
         fans = self.telemetry.get("fans", [])
         for f in fans:
             idx = f.get("fan_index", 1)
+            lbl = f.get("label", f"Fan {idx}")
             rpm = f.get("current_rpm") or 0
             max_rpm = f.get("reported_max_rpm") or 4800
             boost = f.get("readback_boost") or 0
+
+            # If fan was not present at startup, create row dynamically
+            if idx not in self.fan_rows and hasattr(self, 'fan_group'):
+                row = Adw.ActionRow(
+                    title=lbl,
+                    subtitle=f"{rpm} RPM / {max_rpm} RPM Max • Boost: {boost}/255"
+                )
+                bar = Gtk.ProgressBar()
+                bar.set_size_request(160, -1)
+                bar.set_valign(Gtk.Align.CENTER)
+                pct = min(1.0, rpm / max_rpm) if max_rpm > 0 else 0.0
+                bar.set_fraction(pct)
+                row.add_suffix(bar)
+                self.fan_group.add(row)
+                self.fan_rows[idx] = row
+                self.fan_gauges[idx] = bar
+
             if idx in self.fan_rows:
                 self.fan_rows[idx].set_subtitle(f"{rpm} RPM / {max_rpm} RPM Max • Boost: {boost}/255")
             if idx in self.fan_gauges:
@@ -520,23 +601,39 @@ class AwccApp(Adw.Application):
         self.toast_overlay.add_toast(toast)
 
     def on_profile_button_clicked(self, button, profile_name):
-        self.show_toast(f"Setting profile to '{profile_name}'...")
-        res = subprocess.run([self.ctl, "profile", profile_name], capture_output=True, text=True)
+        self.show_toast(f"Setting profile to '{profile_name.capitalize()}'...")
+        if profile_name.lower() == "ultra":
+            res = self.run_privileged([self.ctl, "gmode", "on"])
+        else:
+            res = self.run_privileged([self.ctl, "profile", profile_name])
+            boost_map = {"quiet": 20, "balanced": 40, "performance": 85}
+            if profile_name in boost_map:
+                b = boost_map[profile_name]
+                for f in self.telemetry.get("fans", []):
+                    idx = f.get("fan_index", 1)
+                    self.run_privileged([self.ctl, "fan", "set", "--fan", str(idx), "--boost", str(b)])
+
         if res.returncode == 0:
             self.show_toast(f"Profile set to {profile_name.capitalize()}")
         else:
-            self.show_toast(f"Failed to set profile: {res.stderr.strip() or 'Permission denied'}")
+            err_msg = res.stderr.strip() or res.stdout.strip() or 'Permission denied'
+            if "[-]" in err_msg:
+                err_msg = err_msg.replace("[-] Error: ", "").replace("[-] ", "")
+            self.show_toast(f"Failed to set profile: {err_msg}")
         self.telemetry = self.query_telemetry()
         self.update_telemetry_ui()
 
     def on_gmode_toggled(self, switch, state):
         target = "on" if state else "off"
         self.show_toast(f"Actuating Game Shift: {target.upper()}...")
-        res = subprocess.run([self.ctl, "gmode", target], capture_output=True, text=True)
+        res = self.run_privileged([self.ctl, "gmode", target])
         if res.returncode == 0:
             self.show_toast(f"Game Shift: {target.upper()}")
         else:
-            self.show_toast(f"Failed: {res.stderr.strip() or 'Error'}")
+            err_msg = res.stderr.strip() or res.stdout.strip() or 'Permission denied'
+            if "[-]" in err_msg:
+                err_msg = err_msg.replace("[-] Error: ", "").replace("[-] ", "")
+            self.show_toast(f"Failed: {err_msg}")
         self.telemetry = self.query_telemetry()
         self.update_telemetry_ui()
         return True
@@ -545,25 +642,31 @@ class AwccApp(Adw.Application):
         val = int(scale.get_value())
         for f in self.telemetry.get("fans", []):
             idx = f.get("fan_index", 1)
-            subprocess.run([self.ctl, "fan", "set", "--fan", str(idx), "--boost", str(val)], capture_output=True)
+            self.run_privileged([self.ctl, "fan", "set", "--fan", str(idx), "--boost", str(val)])
 
     def on_max_fans_clicked(self, button):
         self.show_toast("Actuating 100% maximum fan boost...")
-        res = subprocess.run([self.ctl, "fan", "max"], capture_output=True, text=True)
+        res = self.run_privileged([self.ctl, "fan", "max"])
         if res.returncode == 0:
             self.show_toast("Maximum fans active (255/255)")
         else:
-            self.show_toast(f"Failed: {res.stderr.strip() or 'Permission error'}")
+            err_msg = res.stderr.strip() or res.stdout.strip() or 'Permission error'
+            if "[-]" in err_msg:
+                err_msg = err_msg.replace("[-] Error: ", "").replace("[-] ", "")
+            self.show_toast(f"Failed: {err_msg}")
         self.telemetry = self.query_telemetry()
         self.update_telemetry_ui()
 
     def on_release_fans_clicked(self, button):
         self.show_toast("Releasing fans to BIOS firmware control...")
-        res = subprocess.run([self.ctl, "fan", "release"], capture_output=True, text=True)
+        res = self.run_privileged([self.ctl, "fan", "release"])
         if res.returncode == 0:
             self.show_toast("Fans returned to automatic firmware curve")
         else:
-            self.show_toast(f"Failed: {res.stderr.strip() or 'Permission error'}")
+            err_msg = res.stderr.strip() or res.stdout.strip() or 'Permission error'
+            if "[-]" in err_msg:
+                err_msg = err_msg.replace("[-] Error: ", "").replace("[-] ", "")
+            self.show_toast(f"Failed: {err_msg}")
         self.telemetry = self.query_telemetry()
         self.update_telemetry_ui()
 

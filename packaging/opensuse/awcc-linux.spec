@@ -65,6 +65,10 @@ install -m 0644 packaging/awcc-gui.desktop %{buildroot}%{_datadir}/applications/
 install -d %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
 install -m 0644 packaging/icons/awcc-gui.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
 
+# PolicyKit Policy
+install -d %{buildroot}%{_datadir}/polkit-1/actions
+install -m 0644 packaging/io.github.monkey0_9.awcc.policy %{buildroot}%{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
+
 %pre
 %service_add_pre awccd.service
 
@@ -89,6 +93,7 @@ install -m 0644 packaging/icons/awcc-gui.svg %{buildroot}%{_datadir}/icons/hicol
 %{_unitdir}/awccd.service
 %{_datadir}/applications/awcc-gui.desktop
 %{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
+%{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
 
 %changelog
 * Mon Oct 26 2026 AWCC Linux Team <support@awcc-linux.org>

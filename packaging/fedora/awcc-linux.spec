@@ -55,6 +55,10 @@ install -m 0644 packaging/awcc-gui.desktop $RPM_BUILD_ROOT%{_datadir}/applicatio
 install -d $RPM_BUILD_ROOT%{_datadir}/icons/hicolor/scalable/apps
 install -m 0644 packaging/icons/awcc-gui.svg $RPM_BUILD_ROOT%{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
 
+# PolicyKit Policy
+install -d $RPM_BUILD_ROOT%{_datadir}/polkit-1/actions
+install -m 0644 packaging/io.github.monkey0_9.awcc.policy $RPM_BUILD_ROOT%{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
+
 %check
 desktop-file-validate $RPM_BUILD_ROOT%{_datadir}/applications/awcc-gui.desktop || true
 
@@ -79,6 +83,7 @@ desktop-file-validate $RPM_BUILD_ROOT%{_datadir}/applications/awcc-gui.desktop |
 %{_unitdir}/awccd.service
 %{_datadir}/applications/awcc-gui.desktop
 %{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
+%{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
 
 %changelog
 * Mon Oct 26 2026 AWCC Linux Team <support@awcc-linux.org> - 0.3.0-1
