@@ -887,7 +887,7 @@ def toggle_gameshift_direct(aw_hwmon):
     if not is_active and aw_hwmon and os.path.isdir(aw_hwmon):
         try:
             with open(os.path.join(aw_hwmon, "fan1_boost"), "r") as f:
-                if int(f.read().strip()) == 255:
+                if int(f.read().strip()) >= 240:
                     is_active = True
         except Exception:
             pass
@@ -942,7 +942,7 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
             {"index": 2, "label": "FAN 2 (GPU)", "boost": b2, "rpm": r2, "max": max2, "controllable": aw_hwmon is not None},
         ]
 
-    gmode_active = (b1 == 255)
+    gmode_active = (b1 >= 240)
     has_controllable_fans = any(f.get("controllable", False) for f in fans)
 
     if b1 >= 240:

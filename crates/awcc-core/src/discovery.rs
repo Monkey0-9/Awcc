@@ -204,18 +204,32 @@ impl HardwareManager {
             });
         }
 
-        fs::write(&prof_file, requested).map_err(|e| {
+        if let Err(e) = fs::write(&prof_file, requested) {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
-                AwccError::PermissionDenied {
-                    path: prof_file.display().to_string(),
+                // Try fallback to /sys/firmware/acpi/platform_profile if it exists and is writable
+                let acpi_fallback = self.sysfs_root.join("sys/firmware/acpi/platform_profile");
+                if acpi_fallback.exists()
+                    && acpi_fallback != prof_file
+                    && fs::write(&acpi_fallback, requested).is_ok()
+                {
+                    let readback = fs::read_to_string(&acpi_fallback)
+                        .map(|s| s.trim().to_string())
+                        .unwrap_or_default();
+                    if readback == requested {
+                        return Ok(());
+                    }
                 }
+
+                return Err(AwccError::PermissionDenied {
+                    path: prof_file.display().to_string(),
+                });
             } else {
-                AwccError::Io {
+                return Err(AwccError::Io {
                     path: prof_file.display().to_string(),
                     source: e,
-                }
+                });
             }
-        })?;
+        }
 
         // Verify readback
         let readback = fs::read_to_string(&prof_file)
@@ -546,7 +560,12 @@ impl HardwareManager {
         })?;
 
         let readback = self.read_fan_boost(fan_index)?;
-        if readback != boost {
+        let verified = if boost == 255 {
+            readback >= 240
+        } else {
+            readback == boost
+        };
+        if !verified {
             return Err(AwccError::ReadbackMismatch {
                 fan: fan_index,
                 requested: boost,

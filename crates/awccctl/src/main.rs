@@ -755,7 +755,10 @@ fn cmd_gmode(hw: &HardwareManager, state: Option<String>, monitor: bool, interva
         Some("toggle") => {
             let (cur_prof, _, _) = hw.get_platform_profile();
             let fans = hw.discover_fans();
-            let all_max = !fans.is_empty() && fans.iter().all(|f| f.readback_boost == Some(255));
+            let all_max = !fans.is_empty()
+                && fans
+                    .iter()
+                    .all(|f| f.readback_boost.is_some_and(|b| b >= 200));
             if cur_prof == "performance" && all_max {
                 "off"
             } else {

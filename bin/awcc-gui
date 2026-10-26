@@ -38,19 +38,19 @@ except ImportError as e:
     sys.exit(1)
 
 def find_awccctl_bin():
-    # 1. Prefer release build in workspace
-    repo_rel = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "target", "release", "awccctl")
-    if os.path.isfile(repo_rel) and os.access(repo_rel, os.X_OK):
-        return repo_rel
+    # 1. Check system bins (standard location for PolicyKit and systemd)
+    for sbin in ["/usr/local/bin/awccctl", "/usr/bin/awccctl"]:
+        if os.path.isfile(sbin) and os.access(sbin, os.X_OK):
+            return sbin
     # 2. Check local user bin
     user_bin = os.path.expanduser("~/.local/bin/awccctl")
     if os.path.isfile(user_bin) and os.access(user_bin, os.X_OK):
         return user_bin
-    # 3. Check system bins
-    for sbin in ["/usr/local/bin/awccctl", "/usr/bin/awccctl"]:
-        if os.path.isfile(sbin) and os.access(sbin, os.X_OK):
-            return sbin
-    # 4. Check debug build
+    # 3. Check workspace release build
+    repo_rel = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "target", "release", "awccctl")
+    if os.path.isfile(repo_rel) and os.access(repo_rel, os.X_OK):
+        return repo_rel
+    # 4. Check workspace debug build
     repo_bin = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "target", "debug", "awccctl")
     if os.path.isfile(repo_bin) and os.access(repo_bin, os.X_OK):
         return repo_bin
@@ -242,12 +242,24 @@ class AwccApp(Adw.Application):
         profile_box.set_halign(Gtk.Align.CENTER)
 
         cur_prof = self.telemetry.get("active_platform_profile", "balanced").lower()
+        gmode = self.is_gmode_active()
+        if gmode:
+            active_btn_name = "ultra"
+        elif cur_prof in ["performance", "balanced-performance"]:
+            active_btn_name = "performance"
+        elif cur_prof == "quiet":
+            active_btn_name = "quiet"
+        else:
+            active_btn_name = "balanced"
+
         self.profile_buttons = {}
         for p in ["Quiet", "Balanced", "Performance", "Ultra"]:
             btn = Gtk.Button(label=p)
             btn.set_size_request(120, 42)
-            if p.lower() == cur_prof or (p == "Ultra" and cur_prof == "performance" and self.is_gmode_active()):
+            if p.lower() == active_btn_name:
                 btn.add_css_class("suggested-action")
+                if p.lower() == "ultra":
+                    btn.add_css_class("destructive-action")
             btn.connect("clicked", self.on_profile_button_clicked, p.lower())
             profile_box.append(btn)
             self.profile_buttons[p.lower()] = btn
@@ -448,10 +460,15 @@ class AwccApp(Adw.Application):
             sys.exit(0)
 
     def is_gmode_active(self):
+        cur_prof = self.telemetry.get("active_platform_profile", "").lower()
         fans = self.telemetry.get("fans", [])
-        if fans and all(f.get("readback_boost") == 255 for f in fans):
+        has_max_fans = fans and any((f.get("readback_boost") or 0) >= 200 for f in fans)
+        if cur_prof in ["performance", "balanced-performance", "ultra"] and has_max_fans:
             return True
-        return self.telemetry.get("gmode_status", "").lower() in ["on", "active"]
+        gstat = str(self.telemetry.get("gmode_status", "")).lower()
+        if gstat in ["on", "active", "1", "enabled"]:
+            return True
+        return False
 
     def on_timer_tick(self):
         self.telemetry = self.query_telemetry()
@@ -589,11 +606,43 @@ class AwccApp(Adw.Application):
 
         # Synchronize profile highlight
         cur_prof = self.telemetry.get("active_platform_profile", "balanced").lower()
+        gmode = self.is_gmode_active()
+        if gmode:
+            active_btn_name = "ultra"
+        elif cur_prof in ["performance", "balanced-performance"]:
+            active_btn_name = "performance"
+        elif cur_prof == "quiet":
+            active_btn_name = "quiet"
+        else:
+            active_btn_name = "balanced"
+
         for name, btn in self.profile_buttons.items():
-            if name == cur_prof:
+            if name == active_btn_name:
                 btn.add_css_class("suggested-action")
+                if name == "ultra":
+                    btn.add_css_class("destructive-action")
+                else:
+                    btn.remove_css_class("destructive-action")
             else:
                 btn.remove_css_class("suggested-action")
+                btn.remove_css_class("destructive-action")
+
+        # Synchronize Game Shift switch without triggering event recursion
+        if hasattr(self, 'gmode_switch') and self.gmode_switch.get_sensitive():
+            self.updating = True
+            try:
+                self.gmode_switch.set_active(gmode)
+            finally:
+                self.updating = False
+
+        # Synchronize manual fan boost slider without triggering callbacks
+        if hasattr(self, 'fan_slider') and fans:
+            b_val = fans[0].get("readback_boost", 0) or 0
+            self.updating = True
+            try:
+                self.fan_slider.set_value(b_val)
+            finally:
+                self.updating = False
 
     def show_toast(self, message):
         toast = Adw.Toast.new(message)
@@ -604,7 +653,12 @@ class AwccApp(Adw.Application):
         self.show_toast(f"Setting profile to '{profile_name.capitalize()}'...")
         if profile_name.lower() == "ultra":
             res = self.run_privileged([self.ctl, "gmode", "on"])
+            if res.returncode != 0:
+                self.run_privileged([self.ctl, "profile", "performance"])
+                res = self.run_privileged([self.ctl, "fan", "max"])
         else:
+            if self.is_gmode_active():
+                self.run_privileged([self.ctl, "gmode", "off"])
             res = self.run_privileged([self.ctl, "profile", profile_name])
             boost_map = {"quiet": 20, "balanced": 40, "performance": 85}
             if profile_name in boost_map:
@@ -624,9 +678,14 @@ class AwccApp(Adw.Application):
         self.update_telemetry_ui()
 
     def on_gmode_toggled(self, switch, state):
+        if getattr(self, 'updating', False):
+            return False
         target = "on" if state else "off"
         self.show_toast(f"Actuating Game Shift: {target.upper()}...")
         res = self.run_privileged([self.ctl, "gmode", target])
+        if res.returncode != 0 and target == "on":
+            self.run_privileged([self.ctl, "profile", "performance"])
+            res = self.run_privileged([self.ctl, "fan", "max"])
         if res.returncode == 0:
             self.show_toast(f"Game Shift: {target.upper()}")
         else:
@@ -639,6 +698,8 @@ class AwccApp(Adw.Application):
         return True
 
     def on_slider_changed(self, scale):
+        if getattr(self, 'updating', False):
+            return
         val = int(scale.get_value())
         for f in self.telemetry.get("fans", []):
             idx = f.get("fan_index", 1)
