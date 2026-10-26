@@ -731,7 +731,14 @@ def get_auxiliary_thermals():
                         pass
                 try:
                     with open(os.path.join(p, t), "r") as f:
-                        aux[lbl] = float(f.read().strip()) / 1000.0
+                        val = float(f.read().strip()) / 1000.0
+                        aux[lbl] = val
+                        # Handle Dell hardware where VRM/Ambient are labeled as Unknown
+                        if lbl == "Unknown":
+                            if t == "temp2_input":
+                                aux["VRM"] = val
+                            elif t == "temp3_input":
+                                aux["Ambient"] = val
                 except Exception:
                     pass
     return aux

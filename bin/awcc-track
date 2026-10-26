@@ -20,6 +20,7 @@ AWCCCTL_BIN=""
 for candidate in \
     "${ROOT_DIR}/target/release/awccctl" \
     "${HOME}/.local/bin/awccctl" \
+    "${ROOT_DIR}/target/debug/awccctl" \
     "/usr/local/bin/awccctl" \
     "/usr/bin/awccctl"; do
     if [[ -x "$candidate" ]]; then
@@ -28,35 +29,110 @@ for candidate in \
     fi
 done
 
-if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
-    echo "AWCC Linux: Hardware Performance & Thermal Telemetry Tracker"
-    echo "Usage: awcc-track [OPTIONS]"
-    echo ""
-    echo "Options:"
-    echo "  --once               Single-shot telemetry readout"
-    echo "  --json               JSON-formatted real-time telemetry stream"
-    echo "  --cli                Terminal matrix tracking mode (via awccctl)"
-    echo "  --theme <name>       Color grading theme (cryo, cyberpunk, darkcore, solar, matrix, vaporwave)"
-    echo "  -h, --help           Show this help message and exit"
-    exit 0
-fi
+show_help() {
+    cat << 'EOF'
+AWCC Linux: Hardware Performance & Thermal Telemetry Tracker
+Universal live telemetry tracking across Dell, Alienware, ASUS, Lenovo, HP, and generic PCs.
 
-# If JSON streaming or CLI mode is requested, use awccctl
-if [[ "${1:-}" == "--json" ]] || [[ "${2:-}" == "--json" ]] || [[ "${1:-}" == "--cli" ]] || [[ "${1:-}" == "--once" ]]; then
+Usage:
+  awcc-track [OPTIONS]
+
+Display Modes:
+  (default)            Auto-select: Full TUI Cybernetic Cockpit in interactive terminal,
+                       or high-performance CLI matrix table in non-interactive/pipes.
+  -c, --cli            Force high-performance ANSI terminal table tracking (via awccctl)
+  -d, --tui, --dashboard Force interactive TrueColor Cybernetic Cockpit (via Python/curses)
+  --json               Stream raw JSON telemetry continuously for integration/dashboards
+
+Tracking Options:
+  -1, --once, -s, --snapshot  Single-shot telemetry readout then exit
+  -i, --interval <SEC>        Telemetry refresh interval in seconds (default: 1.0)
+  --theme <NAME>              Cockpit theme: cryo, cyberpunk, darkcore, solar, matrix, vaporwave
+  -h, --help                  Show this help message and exit
+
+Examples:
+  awcc-track                  # Launch interactive real-time cockpit
+  awcc-track --cli            # Launch ANSI table live tracking console
+  awcc-track --once           # Print instantaneous hardware telemetry snapshot
+  awcc-track --json           # Stream real-time telemetry JSON to stdout
+  awcc-quiet --track          # Actuate Quiet profile and transition to live tracking
+EOF
+    exit 0
+}
+
+FORCE_CLI=0
+FORCE_TUI=0
+FORCE_JSON=0
+IS_ONCE=0
+FORWARD_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            show_help
+            ;;
+        -c|--cli)
+            FORCE_CLI=1
+            shift
+            ;;
+        -d|--tui|--dashboard)
+            FORCE_TUI=1
+            shift
+            ;;
+        --json)
+            FORCE_JSON=1
+            FORWARD_ARGS+=("$1")
+            shift
+            ;;
+        -1|--once|-s|--snapshot)
+            IS_ONCE=1
+            FORWARD_ARGS+=("--once")
+            shift
+            ;;
+        --theme)
+            FORCE_TUI=1
+            FORWARD_ARGS+=("$1")
+            if [[ $# -gt 1 ]]; then
+                FORWARD_ARGS+=("$2")
+                shift
+            fi
+            shift
+            ;;
+        *)
+            FORWARD_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# If JSON streaming or explicit CLI requested
+if [[ "$FORCE_JSON" -eq 1 ]] || [[ "$FORCE_CLI" -eq 1 ]]; then
     if [[ -n "$AWCCCTL_BIN" ]]; then
-        exec "$AWCCCTL_BIN" track "$@"
+        exec "$AWCCCTL_BIN" track "${FORWARD_ARGS[@]}"
     else
         echo "[-] Error: awccctl binary not found for CLI/JSON tracking." >&2
         exit 1
     fi
 fi
 
-# If live terminal cockpit is available, launch it
-if [[ -n "$DASHBOARD_SCRIPT" ]]; then
-    exec python3 "$DASHBOARD_SCRIPT" "$@"
+# If explicit TUI requested
+if [[ "$FORCE_TUI" -eq 1 ]]; then
+    if [[ -n "$DASHBOARD_SCRIPT" ]]; then
+        exec python3 "$DASHBOARD_SCRIPT" "${FORWARD_ARGS[@]}"
+    else
+        echo "[-] Error: awcc-lux-dashboard.py not found for TUI tracking." >&2
+        exit 1
+    fi
+fi
+
+# Auto-selection logic
+if [[ -t 0 ]] && [[ -t 1 ]] && [[ -n "$DASHBOARD_SCRIPT" ]]; then
+    exec python3 "$DASHBOARD_SCRIPT" "${FORWARD_ARGS[@]}"
 elif [[ -n "$AWCCCTL_BIN" ]]; then
-    exec "$AWCCCTL_BIN" track "$@"
+    exec "$AWCCCTL_BIN" track "${FORWARD_ARGS[@]}"
+elif [[ -n "$DASHBOARD_SCRIPT" ]]; then
+    exec python3 "$DASHBOARD_SCRIPT" "${FORWARD_ARGS[@]}"
 else
-    echo "[-] Error: Neither awcc-lux-dashboard.py nor awccctl found." >&2
+    echo "[-] Error: Neither awccctl nor awcc-lux-dashboard.py found." >&2
     exit 1
 fi

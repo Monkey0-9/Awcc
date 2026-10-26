@@ -64,8 +64,12 @@ enum Commands {
         interval: f64,
 
         /// Single-shot snapshot
-        #[arg(long)]
+        #[arg(short, long, alias = "snapshot")]
         once: bool,
+
+        /// CLI table tracking mode (default)
+        #[arg(short, long)]
+        cli: bool,
     },
 
     /// Set platform profile (e.g. performance, balanced, quiet, cool, custom)
@@ -133,6 +137,7 @@ fn main() {
             json,
             interval,
             once,
+            cli: _,
         } => cmd_track(&hw, json, interval, once),
         Commands::Profile { name } => cmd_profile(&hw, &name),
         Commands::Gmode { state } => cmd_gmode(&hw, state),

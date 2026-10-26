@@ -126,7 +126,7 @@ if [[ -n "${AW_HWMON}" ]]; then
         echo "${BOOST}" > "${AW_HWMON}/fan1_boost"
         echo "${BOOST}" > "${AW_HWMON}/fan2_boost"
     elif command -v sudo >/dev/null 2>&1; then
-        sudo bash -c "echo ${BOOST} > '${AW_HWMON}/fan1_boost' && echo ${BOOST} > '${AW_HWMON}/fan2_boost'"
+        echo "${BOOST}" | sudo tee "${AW_HWMON}/fan1_boost" "${AW_HWMON}/fan2_boost" >/dev/null
     else
         echo "[-] Error: Writing fan boost requires root/sudo." >&2
         exit 1
@@ -156,10 +156,14 @@ if [[ "$FLAG" == "--quiet" ]] || [[ "$FLAG" == "-q" ]]; then
 elif [[ "$FLAG" == "--track" ]] || [[ "$FLAG" == "-t" ]] || [[ "$FLAG" == "--watch" ]] || [[ "$FLAG" == "-w" ]]; then
     echo "[*] Transitioning directly to real-time hardware tracking cockpit..."
     sleep 0.4
-    if [[ -n "$DASHBOARD_SCRIPT" ]]; then
+    if [[ -x "${SCRIPT_DIR}/awcc-track" ]]; then
+        exec "${SCRIPT_DIR}/awcc-track"
+    elif command -v awcc-track >/dev/null 2>&1; then
+        exec awcc-track
+    elif [[ -n "$DASHBOARD_SCRIPT" ]]; then
         exec python3 "$DASHBOARD_SCRIPT"
     elif [[ -x "${ROOT_DIR}/target/release/awccctl" ]]; then
-        exec "${ROOT_DIR}/target/release/awccctl" status --watch
+        exec "${ROOT_DIR}/target/release/awccctl" track
     fi
 elif [[ "$FLAG" == "--snapshot" ]] || [[ "$FLAG" == "-s" ]] || [[ "$FLAG" == "--once" ]]; then
     if [[ -n "$DASHBOARD_SCRIPT" ]]; then

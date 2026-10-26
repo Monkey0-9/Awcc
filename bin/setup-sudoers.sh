@@ -11,7 +11,6 @@ CONTENT="# AWCC Linux: Passwordless hardware profile and fan control
 ${USER_NAME} ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/platform-profile/platform-profile-*/profile
 ${USER_NAME} ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/firmware/acpi/platform_profile
 ${USER_NAME} ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/hwmon/hwmon*/fan*_boost
-${USER_NAME} ALL=(ALL) NOPASSWD: /usr/bin/bash -c echo * > /sys/class/hwmon/hwmon*/fan*_boost
 "
 
 if [[ $EUID -eq 0 ]]; then
