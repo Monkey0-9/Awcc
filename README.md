@@ -1,79 +1,99 @@
 # AWCC Linux (`awcc-linux`)
 
-Enterprise fan control, platform profile orchestration, and real-time tachometer telemetry suite for Dell G-Series & Alienware laptops on Linux.
+Universal hardware performance orchestration, dynamic fan control, platform profile governance, and real-time telemetry suite for Linux.
 
-**Primary Target Platform**: Dell G15 5530 (i7-13650HX, RTX 3050 6GB) on Red Hat Enterprise Linux 10.2 / Fedora / CentOS Stream (Kernel 6.12+).
+Supports **Dell & Alienware**, **ASUS ROG/TUF**, **Lenovo ThinkPad/Legion**, **HP Omen/Victus**, **Framework**, **System76**, and standard Linux desktop motherboards.
 
 ---
 
-## Architecture Overview
+## Universal Architecture Overview
 
+```mermaid
+flowchart TD
+    User["User Interface Layer (CLI • TUI Cockpit • Modern Desktop GUI)"]
+    User --> HardwareManager["awcc-core: HardwareManager & Capability Engine"]
+    
+    HardwareManager --> Registry["Provider Registry"]
+    
+    Registry --> DellProv["DellAwccProvider\n(alienware-wmi, dell_smm, dell_ddv)"]
+    Registry --> AsusProv["AsusProvider\n(asus-wmi, throttle_thermal_policy)"]
+    Registry --> LenovoProv["LenovoProvider\n(thinkpad_acpi, /proc/acpi/ibm/fan)"]
+    Registry --> HpProv["HpProvider\n(hp-wmi, hp-omen)"]
+    Registry --> FrameworkProv["FrameworkSystem76Provider\n(cros_ec, system76_acpi)"]
+    Registry --> GenericProv["GenericLinuxProvider\n(Standard hwmon pwm, platform-profile, cpufreq)"]
+    
+    DellProv --> Sysfs1["/sys/class/hwmon (alienware_wmi)\n/sys/class/platform-profile"]
+    AsusProv --> Sysfs2["/sys/devices/platform/asus-nb-wmi\n/sys/class/platform-profile"]
+    LenovoProv --> Sysfs3["/proc/acpi/ibm/fan\n/sys/class/platform-profile"]
+    GenericProv --> Sysfs4["/sys/class/platform-profile\n/sys/class/hwmon/hwmon*"]
 ```
-                      /usr/local/bin/rhel-performance (Boost 255/255)
-                                    |
-                                 awccctl
-                        (CLI & Telemetry Engine)
-                                    |
-                                  awccd
-                        (Policy & Safety Daemon)
-                                    |
-                sysfs (/sys/class/hwmon/hwmonX [0644])
-                                    |
-                 alienware-wmi.ko (Signed Kernel Module)
-                                    |
-                      WMAX WMI Node (PNP0C14:0b)
-                                    |
-                     Dell Embedded Controller (EC)
-```
+
+---
+
+## Key Features
+
+- **Multi-Vendor Capability Discovery (`awccctl capabilities`)**: Evaluates host hardware and negotiates supported capabilities (`FanControlCapability`, `PlatformProfileCapability`, `VerificationTier`) across vendors without crashing.
+- **Modern Desktop GUI (`bin/awcc-gui`)**: Native GTK4 + Libadwaita hardware cockpit with live thermal progress meters, capability-gated fan boost sliders, platform profile selectors, and diagnostic health status.
+- **Cybernetic Terminal Cockpit (`bin/awcc-lux-dashboard.py`)**: Full-terminal ANSI cockpit auto-scaling from 36 to 240+ columns with event-driven non-blocking input (<1ms key response) and real-time tachometer curves.
+- **Autonomous Thermal Daemon (`awccd`)**: Background safety daemon featuring piecewise-linear fan ramps, anti-hunt hysteresis damping (`saturating_sub(15)`), and emergency fail-safe reversion to BIOS control.
+- **Zero World-Writable Security Model**: Fan boost controls and platform profiles remain root-owned (`0644`). Unprivileged users read telemetry safely without sudo; privileged actuation is gated by polkit/sudo.
+- **Emergency Hardware Recovery (`bin/doctor-recovery.sh`)**: One-command disaster recovery tool to reset all fan overrides to firmware control, restore balanced profile, and clear lock files.
+- **Multi-Distribution Packaging**: Native packaging specs for Fedora, openSUSE, Debian/Ubuntu, Arch Linux, and NixOS Flake, with init service support for Systemd, OpenRC, and Runit.
 
 ---
 
 ## Security Model & Privilege Boundary
-- **Secure Root Controls (0644)**: System fan boost nodes (`fan[1-2]_boost`) and platform profile switches are restricted to root. World-writable permissions (`chmod 0666`) are strictly forbidden.
-- **Unprivileged Telemetry**: Unprivileged users can freely inspect real-time tachometer RPM, temperatures, and current profiles via `awccctl status`, `awccctl detect`, or the cybernetic terminal dashboard.
+
+- **Secure Root Controls (0644)**: System fan boost nodes (`fan[1-2]_boost`, `pwmX`) and platform profile switches are restricted to root. World-writable permissions (`chmod 0666` or `0777`) are strictly forbidden across all scripts, specs, and daemons.
+- **Unprivileged Telemetry**: Unprivileged users can freely inspect real-time tachometer RPM, temperatures, and current profiles via `awccctl status`, `awccctl detect`, `awccctl capabilities`, the desktop GUI, or the terminal dashboard.
 - **Privileged Actuation**: Changing profiles or commanding fan boosts requires `sudo` or the systemd background daemon (`awccd.service`). For convenience with desktop hotkeys (such as F9), an optional `/etc/sudoers.d/awcc-linux` rule permits wheel users to run `awccctl` fan and profile commands without a password prompt.
 
 ---
 
 ## Quick Start & Verification
 
-### 1. Build and Sign the Driver (if not yet installed)
+### 1. Build and Run CLI
 ```bash
-cd kernel
-make
-./scripts/sign-module.sh
+cargo build --release
+target/release/awccctl detect
+target/release/awccctl capabilities
+target/release/awccctl status
 ```
 
-### 2. Load Driver
+### 2. Launch Desktop GUI (GTK4 + Libadwaita)
 ```bash
-sudo insmod kernel/alienware-wmi.ko
-# Or install system-wide via DKMS / installer:
-sudo ./bin/install-system.sh
+bin/awcc-gui
 ```
 
-### 3. Check System Diagnostics
+### 3. Launch Cybernetic Terminal Dashboard (TUI Cockpit)
+```bash
+python3 bin/awcc-lux-dashboard.py
+# Or snapshot one-liner:
+python3 bin/awcc-lux-dashboard.py --snapshot
+```
+
+### 4. Run System Diagnostics
 ```bash
 awccctl doctor
 ```
 
-### 4. Telemetry Status
+### 5. Actuate True Maximum Performance & Fans (Tier 1/2)
 ```bash
-# Formatted tabular display
-awccctl status
-
-# Machine-readable JSON
-awccctl status --json
+sudo awccctl fan max
+# Or via shortcut:
+sudo awcc-ultra
 ```
 
-### 5. Actuate True Maximum Performance & Fans
+### 6. Emergency Recovery (Revert Fans to BIOS Control)
 ```bash
-sudo ./bin/rhel-performance
+sudo doctor-recovery
+# Or via CLI:
+sudo awccctl fan release
 ```
-*Applies 100% boost (`255/255`) on all controllable fans and verifies tachometer acceleration up to rated hardware ceiling (~4,800 RPM).*
 
 ---
 
-## Operational Modes
+## Operational Modes Ladder
 
 | Mode | Shortcut | Platform Profile | Fan Boost | RPM Ceiling | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -86,17 +106,40 @@ sudo ./bin/rhel-performance
 
 ---
 
-## Cybernetic Terminal Dashboard (TUI Cockpit)
+## Multi-Distribution Installation
 
-Launch the real-time ANSI terminal cockpit for live tachometer graphs, temperatures, clock speeds, and keyboard shortcuts:
-
+### Universal Installer Script
 ```bash
-python3 bin/awcc-lux-dashboard.py
-# Or snapshot one-liner:
-python3 bin/awcc-lux-dashboard.py --snapshot
+sudo ./bin/install-system.sh
 ```
+Intelligently inspects `/etc/os-release` and DMI hardware:
+- Installs binaries to `/usr/local/bin/` (`awccctl`, `awccd`, `awcc-gui`, `awcc-lux-dashboard.py`, `awcc-mode`, `doctor-recovery`).
+- Installs XDG desktop entry (`awcc-gui.desktop`) and application icon (`awcc-gui.svg`).
+- Configures system service (`systemd`, `openrc`, or `runit`).
+- On Dell systems, compiles and registers signed `alienware-wmi` module; on non-Dell systems, binds native upstream drivers.
 
-*Note: The dashboard is a terminal user interface (TUI). A native GTK4/Libadwaita desktop GUI is planned for Phase 4 of the roadmap.*
+### Clean Uninstaller Script
+```bash
+sudo ./bin/uninstall-system.sh
+```
+Cleanly reverts all fans to firmware control, stops daemons, removes binaries, desktop entries, icons, and kernel module extras.
+
+### Distribution Packaging Files
+- **Fedora RPM**: `packaging/fedora/awcc-linux.spec`
+- **openSUSE RPM**: `packaging/opensuse/awcc-linux.spec`
+- **RHEL 10.2 / Enterprise Linux**: `packaging/rhel/awcc-linux.spec`
+- **Debian / Ubuntu**: `packaging/debian/control` and `packaging/debian/rules`
+- **Arch Linux**: `packaging/arch/PKGBUILD`
+- **NixOS Flake**: `packaging/nixos/flake.nix` and `packaging/nixos/default.nix`
+
+---
+
+## Hardware Verification Tiers & Documentation
+
+Detailed hardware documentation is archived in `docs/`:
+- [`docs/compatibility-matrix.md`](docs/compatibility-matrix.md): Complete list of Tier 1 through Tier 4 verified hardware models.
+- [`docs/multi-vendor-guide.md`](docs/multi-vendor-guide.md): Architectural deep dive into capability negotiation across vendors.
+- [`docs/hardware-telemetry-submission.md`](docs/hardware-telemetry-submission.md): Guide for submitting new hardware evidence to certify community models.
 
 ---
 

@@ -1,15 +1,18 @@
+use awcc_core::capabilities::{FanControlCapability, VerificationTier};
 use awcc_core::HardwareManager;
 use clap::{Parser, Subcommand};
 use colored::*;
-use std::path::PathBuf;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::Duration;
 
 #[derive(Parser)]
 #[command(name = "awccctl")]
 #[command(author = "AWCC Linux Team")]
-#[command(version = "0.2.0")]
-#[command(about = "Dell AWCC Fan Control & Telemetry Utility for Linux", long_about = None)]
+#[command(version = "0.3.0")]
+#[command(about = "Universal Linux Hardware Performance & Thermal Control Utility", long_about = None)]
 struct Cli {
     /// Custom sysfs root path (for diagnostics & testing)
     #[arg(long, global = true)]
@@ -21,8 +24,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Detect AWCC ACPI WMI, G-Mode, and hwmon interfaces
+    /// Detect hardware interface, active provider, and vendor DMI
     Detect,
+
+    /// Show current hardware capabilities, tiers, and supported features
+    Capabilities {
+        /// Output formatted JSON
+        #[arg(long)]
+        json: bool,
+    },
 
     /// Show current fan telemetry, thermals, and platform profile
     Status {
@@ -39,7 +49,7 @@ enum Commands {
 
     /// Toggle or query Dell Game Shift / Ultra Performance G-Mode
     Gmode {
-        /// Optional state (on/off)
+        /// Optional state (on/off/toggle)
         state: Option<String>,
     },
 
@@ -71,9 +81,9 @@ enum FanCommands {
         #[arg(long)]
         boost: u8,
     },
-    /// Request maximum fan boost (255) on all fans
+    /// Request maximum fan boost on all fans
     Max,
-    /// Release fan boost (0) back to BIOS firmware control
+    /// Release fan boost back to BIOS/firmware control
     Release,
 }
 
@@ -86,6 +96,7 @@ fn main() {
 
     match cli.command {
         Commands::Detect => cmd_detect(&hw),
+        Commands::Capabilities { json } => cmd_capabilities(&hw, json),
         Commands::Status { json } => cmd_status(&hw, json),
         Commands::Profile { name } => cmd_profile(&hw, &name),
         Commands::Gmode { state } => cmd_gmode(&hw, state),
@@ -99,21 +110,142 @@ fn main() {
     }
 }
 
+fn cmd_capabilities(hw: &HardwareManager, json: bool) {
+    let caps = hw.capabilities();
+    if json {
+        println!("{}", serde_json::to_string_pretty(&caps).unwrap());
+        return;
+    }
+
+    println!(
+        "{}",
+        "=== Universal Linux Hardware Capabilities ==="
+            .bold()
+            .cyan()
+    );
+    println!(
+        "  DMI Vendor:           {}",
+        caps.vendor.to_string().green()
+    );
+    println!("  DMI Product:          {}", caps.product.green());
+    println!("  Chassis Type:         {:?}", caps.chassis);
+    println!(
+        "  Verification Tier:    {}",
+        match caps.tier {
+            VerificationTier::Tier1PhysicallyVerified => caps.tier.to_string().bold().green(),
+            VerificationTier::Tier2CommunitySupported => caps.tier.to_string().bold().yellow(),
+            VerificationTier::Tier3GenericLinuxFallback => caps.tier.to_string().bold().cyan(),
+            VerificationTier::Tier4Unsupported => caps.tier.to_string().bold().red(),
+        }
+    );
+    println!(
+        "  Active Provider:      {}",
+        caps.active_provider_name.cyan()
+    );
+    println!(
+        "  Fan Control:          {}",
+        match &caps.fan_control {
+            FanControlCapability::BoostOffset { max_boost } =>
+                format!("Boost Offset (0-{} ladder)", max_boost).green(),
+            FanControlCapability::StandardPwm { min, max } =>
+                format!("Standard Linux HWMON PWM ({}-{})", min, max).green(),
+            FanControlCapability::DiscreteLevels { levels } =>
+                format!("Discrete Levels [{}]", levels.join(", ")).green(),
+            FanControlCapability::None =>
+                "Firmware Automated (Manual override unsupported)".yellow(),
+        }
+    );
+    println!(
+        "  Platform Profile:     {}",
+        match &caps.platform_profile {
+            awcc_core::capabilities::PlatformProfileCapability::Supported {
+                provider,
+                current,
+                choices,
+            } => format!(
+                "Supported (Provider: {}, Current: {}, Available: [{}])",
+                provider,
+                current,
+                choices.join(", ")
+            )
+            .green(),
+            awcc_core::capabilities::PlatformProfileCapability::NotSupported =>
+                "Not Supported".yellow(),
+        }
+    );
+    println!(
+        "  Game Shift (G-Mode):  {}",
+        if caps.has_game_shift {
+            "Supported (Dell Alienware WMAX)".green()
+        } else {
+            "Not Available on this platform".dimmed()
+        }
+    );
+    println!(
+        "  GPU Telemetry:        {}",
+        if caps.has_gpu_telemetry {
+            "Available (Discrete GPU sensors detected)".green()
+        } else {
+            "None or Integrated Only".dimmed()
+        }
+    );
+    println!(
+        "  Motherboard VRM Temp: {}",
+        if caps.has_vrm_telemetry {
+            "Available".green()
+        } else {
+            "Not Exposed".dimmed()
+        }
+    );
+    println!(
+        "  Ambient Air Temp:     {}",
+        if caps.has_ambient_telemetry {
+            "Available".green()
+        } else {
+            "Not Exposed".dimmed()
+        }
+    );
+    println!(
+        "  Secure Boot Lockdown: {}",
+        if caps.secure_boot_active {
+            "Active (Kernel lockdown enforced)".green()
+        } else {
+            "Inactive / Disabled".yellow()
+        }
+    );
+}
+
 fn cmd_detect(hw: &HardwareManager) {
+    let caps = hw.capabilities();
     let (vendor, prod, bios) = hw.get_dmi_info();
     println!(
         "{}",
-        "=== AWCC Hardware Interface Detection ===".bold().cyan()
+        "=== Universal Hardware Interface Detection ==="
+            .bold()
+            .cyan()
     );
     println!("  DMI Vendor:       {}", vendor.green());
     println!("  DMI Product:      {}", prod.green());
     println!("  BIOS Version:     {}", bios.green());
+    println!("  Chassis Type:     {:?}", caps.chassis);
+    println!(
+        "  Hardware Tier:    {}",
+        match caps.tier {
+            VerificationTier::Tier1PhysicallyVerified => caps.tier.to_string().bold().green(),
+            VerificationTier::Tier2CommunitySupported => caps.tier.to_string().bold().yellow(),
+            VerificationTier::Tier3GenericLinuxFallback => caps.tier.to_string().bold().cyan(),
+            VerificationTier::Tier4Unsupported => caps.tier.to_string().bold().red(),
+        }
+    );
+    println!("  Active Provider:  {}", caps.active_provider_name.cyan());
     println!(
         "  Driver Loaded:    {}",
         if hw.is_driver_loaded() {
             "YES (alienware_wmi active)".green()
+        } else if caps.active_provider_name != "dell_awcc" {
+            format!("YES (Provider: {} active)", caps.active_provider_name).green()
         } else {
-            "NO (module not loaded)".red()
+            "NO (vendor kernel module not loaded)".yellow()
         }
     );
 
@@ -137,9 +269,23 @@ fn cmd_status(hw: &HardwareManager, json: bool) {
         return;
     }
 
+    let caps = hw.capabilities();
     println!(
         "{}",
-        "=== AWCC Fan Control & Telemetry Status ===".bold().cyan()
+        "=== Universal Hardware Control & Telemetry Status ==="
+            .bold()
+            .cyan()
+    );
+    println!(
+        "  Hardware:         {} {} ({:?})",
+        caps.vendor.to_string().green(),
+        caps.product.green(),
+        caps.chassis
+    );
+    println!(
+        "  Tier & Provider:  {} | {}",
+        caps.tier.to_string().bold(),
+        caps.active_provider_name.cyan()
     );
     println!(
         "  Platform Profile: {}",
@@ -148,7 +294,9 @@ fn cmd_status(hw: &HardwareManager, json: bool) {
     if let Some(ref prov) = tele.platform_profile_provider {
         println!("  Profile Provider: {}", prov.cyan());
     }
-    println!("  Game Shift:       {}", tele.gmode_status);
+    if caps.has_game_shift {
+        println!("  Game Shift:       {}", tele.gmode_status);
+    }
     println!(
         "  Available Choices: [{}]",
         tele.platform_profile_choices.join(", ")
@@ -164,8 +312,8 @@ fn cmd_status(hw: &HardwareManager, json: bool) {
         None => println!("  CPU Core Max Temp:  {}", "Unavailable".dimmed()),
     }
     match tele.thermals.gpu_temp {
-        Some(t) => println!("  NVIDIA GPU Temp:    {:.1}°C", t),
-        None => println!("  NVIDIA GPU Temp:    {}", "Unavailable".dimmed()),
+        Some(t) => println!("  GPU Temperature:    {:.1}°C", t),
+        None => println!("  GPU Temperature:    {}", "Unavailable".dimmed()),
     }
     match tele.thermals.vrm_temp {
         Some(t) => println!("  Motherboard VRM:    {:.1}°C", t),
@@ -177,53 +325,60 @@ fn cmd_status(hw: &HardwareManager, json: bool) {
     }
 
     println!();
-    println!(
-        "{:<16} {:<18} {:<18} {:<16} {:<14}",
-        "FAN", "REQUESTED BOOST", "READBACK BOOST", "MEASURED RPM", "RATED MAX RPM"
-    );
-    println!("{:-<84}", "");
-
-    for f in &tele.fans {
-        let label_str = format!("{:<16}", f.label).bold().to_string();
-        let req_str = format!("{:<18}", format!("{}/255", f.requested_boost));
-
-        let readback_raw = match f.readback_boost {
-            Some(b) => format!("{}/255", b),
-            None => "Unavailable".to_string(),
-        };
-        let readback_padded = format!("{:<18}", readback_raw);
-        let readback_str = if f.readback_boost.is_none() {
-            readback_padded.dimmed().to_string()
-        } else {
-            readback_padded
-        };
-
-        let rpm_raw = match f.current_rpm {
-            Some(rpm) => format!("{} RPM", rpm),
-            None => "Unavailable".to_string(),
-        };
-        let rpm_padded = format!("{:<16}", rpm_raw);
-        let rpm_str = match f.current_rpm {
-            Some(rpm) if rpm > 3000 => rpm_padded.bold().green().to_string(),
-            Some(_) => rpm_padded,
-            None => rpm_padded.dimmed().to_string(),
-        };
-
-        let max_raw = match f.reported_max_rpm {
-            Some(max) => format!("{} RPM", max),
-            None => "Unknown".to_string(),
-        };
-        let max_padded = format!("{:<14}", max_raw);
-        let max_str = if f.reported_max_rpm.is_none() {
-            max_padded.dimmed().to_string()
-        } else {
-            max_padded
-        };
-
+    if tele.fans.is_empty() {
         println!(
-            "{} {} {} {} {}",
-            label_str, req_str, readback_str, rpm_str, max_str
+            "  Fan Control:      {}",
+            "Firmware automated / no tachometer sensors exposed".dimmed()
         );
+    } else {
+        println!(
+            "{:<16} {:<18} {:<18} {:<16} {:<14}",
+            "FAN", "REQUESTED BOOST", "READBACK BOOST", "MEASURED RPM", "RATED MAX RPM"
+        );
+        println!("{:-<84}", "");
+
+        for f in &tele.fans {
+            let label_str = format!("{:<16}", f.label).bold().to_string();
+            let req_str = format!("{:<18}", format!("{}/255", f.requested_boost));
+
+            let readback_raw = match f.readback_boost {
+                Some(b) => format!("{}/255", b),
+                None => "Unavailable".to_string(),
+            };
+            let readback_padded = format!("{:<18}", readback_raw);
+            let readback_str = if f.readback_boost.is_none() {
+                readback_padded.dimmed().to_string()
+            } else {
+                readback_padded
+            };
+
+            let rpm_raw = match f.current_rpm {
+                Some(rpm) => format!("{} RPM", rpm),
+                None => "Unavailable".to_string(),
+            };
+            let rpm_padded = format!("{:<16}", rpm_raw);
+            let rpm_str = match f.current_rpm {
+                Some(rpm) if rpm > 3000 => rpm_padded.bold().green().to_string(),
+                Some(_) => rpm_padded,
+                None => rpm_padded.dimmed().to_string(),
+            };
+
+            let max_raw = match f.reported_max_rpm {
+                Some(max) => format!("{} RPM", max),
+                None => "Unknown".to_string(),
+            };
+            let max_padded = format!("{:<14}", max_raw);
+            let max_str = if f.reported_max_rpm.is_none() {
+                max_padded.dimmed().to_string()
+            } else {
+                max_padded
+            };
+
+            println!(
+                "{} {} {} {} {}",
+                label_str, req_str, readback_str, rpm_str, max_str
+            );
+        }
     }
 }
 
@@ -252,6 +407,16 @@ fn cmd_profile(hw: &HardwareManager, profile: &str) {
 }
 
 fn cmd_gmode(hw: &HardwareManager, state: Option<String>) {
+    let caps = hw.capabilities();
+    if !caps.has_game_shift && caps.active_provider_name != "dell_awcc" {
+        eprintln!(
+            "{} Game Shift is a Dell Alienware specific feature not supported on {}.\n    Use 'awccctl profile performance' for maximum performance mode on this platform.",
+            "[-] Error:".bold().red(),
+            caps.vendor
+        );
+        std::process::exit(1);
+    }
+
     let effective_state = match state.as_deref() {
         Some("toggle") => {
             let (cur_prof, _, _) = hw.get_platform_profile();
@@ -361,8 +526,19 @@ fn cmd_fan_set(hw: &HardwareManager, fan: u8, boost: u8) {
         std::process::exit(2);
     }
 
+    let caps = hw.capabilities();
+    if matches!(caps.fan_control, FanControlCapability::None) {
+        eprintln!(
+            "{} Manual fan control is not supported on this hardware (Vendor: {}, Tier: {}).\n    Automatic firmware thermal management is active.\n    Use 'awccctl profile <name>' to adjust thermal/power balance.",
+            "[-] Error:".bold().red(),
+            caps.vendor,
+            caps.tier
+        );
+        std::process::exit(1);
+    }
+
     println!("[*] Setting Fan {} boost to {}/255...", fan, boost);
-    match hw.write_fan_boost(fan, boost) {
+    match hw.set_fan_level(fan, boost) {
         Ok(()) => {
             let rpm = hw
                 .read_fan_rpm(fan)
@@ -383,39 +559,35 @@ fn cmd_fan_set(hw: &HardwareManager, fan: u8, boost: u8) {
 }
 
 fn cmd_fan_max(hw: &HardwareManager) {
-    println!(
-        "{}",
-        "[*] Requesting MAXIMUM fan boost (255/255) on all available fans..."
-            .bold()
-            .yellow()
-    );
-    let fans = hw.discover_fans();
-    if fans.is_empty() {
+    let caps = hw.capabilities();
+    if matches!(caps.fan_control, FanControlCapability::None) {
         eprintln!(
-            "{} No controllable fans detected via alienware_wmi.",
-            "[-] Error:".bold().red()
+            "{} Maximum fan boost is not supported on this hardware (Vendor: {}, Tier: {}).\n    Automatic firmware thermal management is active.\n    Use 'awccctl profile performance' to request highest performance mode.",
+            "[-] Error:".bold().red(),
+            caps.vendor,
+            caps.tier
         );
         std::process::exit(1);
     }
 
-    let mut failure = false;
-    for fan in &fans {
-        if let Err(e) = hw.write_fan_boost(fan.fan_index, 255) {
-            eprintln!(
-                "{} Failed to set max boost on fan {}: {}",
-                "[-] Error:".bold().red(),
-                fan.fan_index,
-                e
-            );
-            failure = true;
-        }
-    }
-    if failure {
+    println!(
+        "{}",
+        "[*] Requesting MAXIMUM fan boost on all available fans..."
+            .bold()
+            .yellow()
+    );
+
+    if let Err(e) = hw.set_max_fans() {
+        eprintln!(
+            "{} Failed to set max fans: {}",
+            "[-] Error:".bold().red(),
+            e
+        );
         std::process::exit(1);
     }
 
-    println!("[*] Sampling tachometer response (5 seconds)...");
-    for i in 1..=5 {
+    println!("[*] Sampling tachometer response (3 seconds)...");
+    for i in 1..=3 {
         sleep(Duration::from_secs(1));
         let r1 = hw
             .read_fan_rpm(1)
@@ -429,7 +601,7 @@ fn cmd_fan_max(hw: &HardwareManager) {
     }
     println!(
         "{}",
-        "[+] Maximum fan boost (255/255) confirmed by readback and active tachometer ramp."
+        "[+] Maximum fan boost confirmed by active provider."
             .bold()
             .green()
     );
@@ -438,34 +610,20 @@ fn cmd_fan_max(hw: &HardwareManager) {
 fn cmd_fan_release(hw: &HardwareManager) {
     println!(
         "{}",
-        "[*] Releasing fan boost (0/255) back to BIOS firmware control..."
+        "[*] Releasing fan boost back to BIOS firmware control..."
             .bold()
             .yellow()
     );
-    let fans = hw.discover_fans();
-    if fans.is_empty() {
+
+    if let Err(e) = hw.release_fans() {
         eprintln!(
-            "{} No controllable fans detected via alienware_wmi.",
-            "[-] Error:".bold().red()
+            "{} Failed to release fans: {}",
+            "[-] Error:".bold().red(),
+            e
         );
         std::process::exit(1);
     }
 
-    let mut failure = false;
-    for fan in &fans {
-        if let Err(e) = hw.write_fan_boost(fan.fan_index, 0) {
-            eprintln!(
-                "{} Failed to release fan {}: {}",
-                "[-] Error:".bold().red(),
-                fan.fan_index,
-                e
-            );
-            failure = true;
-        }
-    }
-    if failure {
-        std::process::exit(1);
-    }
     println!(
         "{}",
         "[+] Fan control authority surrendered to BIOS EC firmware."
@@ -474,74 +632,132 @@ fn cmd_fan_release(hw: &HardwareManager) {
     );
 }
 
+fn check_sysfs_permissions(root: &Path) -> (bool, Vec<String>) {
+    let mut violations = Vec::new();
+    let sysfs_dir = root.join("sys");
+    if !sysfs_dir.exists() {
+        return (true, violations);
+    }
+
+    // Inspect critical sysfs directories if they exist
+    let targets = [
+        root.join("sys/class/platform-profile"),
+        root.join("sys/class/hwmon"),
+        root.join("sys/devices/platform"),
+    ];
+
+    for target in &targets {
+        if let Ok(entries) = fs::read_dir(target) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if let Ok(metadata) = p.metadata() {
+                    let mode = metadata.permissions().mode();
+                    if (mode & 0o002) != 0 {
+                        violations.push(format!(
+                            "{}: world-writable (mode {:o})",
+                            p.display(),
+                            mode
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    (violations.is_empty(), violations)
+}
+
 fn cmd_doctor(hw: &HardwareManager) {
+    let caps = hw.capabilities();
     let (vendor, prod, bios) = hw.get_dmi_info();
     println!(
         "{}",
-        "=== AWCC Linux Doctor Diagnostic Suite ===".bold().cyan()
+        "=== Universal Linux Hardware Doctor Diagnostic Suite ==="
+            .bold()
+            .cyan()
     );
     println!("1. DMI System Vendor:       {}", vendor);
     println!("2. DMI Product Name:        {}", prod);
     println!("3. BIOS Firmware Version:   {}", bios);
+    println!("4. Chassis Type:            {:?}", caps.chassis);
+    println!(
+        "5. Hardware Tier:           {}",
+        caps.tier.to_string().bold()
+    );
+    println!(
+        "6. Active Provider:         {}",
+        caps.active_provider_name.cyan()
+    );
 
-    let kver = std::fs::read_to_string(hw.sysfs_root().join("proc/sys/kernel/osrelease"))
-        .or_else(|_| std::fs::read_to_string("/proc/sys/kernel/osrelease"))
+    let os_release = fs::read_to_string(hw.sysfs_root().join("etc/os-release"))
+        .or_else(|_| fs::read_to_string("/etc/os-release"))
+        .unwrap_or_default();
+    let distro_name = os_release
+        .lines()
+        .find(|l| l.starts_with("PRETTY_NAME="))
+        .map(|l| l.trim_start_matches("PRETTY_NAME=").trim_matches('"'))
+        .unwrap_or("Unknown Linux Distribution");
+    println!("7. Host OS Distribution:    {}", distro_name.green());
+
+    let kver = fs::read_to_string(hw.sysfs_root().join("proc/sys/kernel/osrelease"))
+        .or_else(|_| fs::read_to_string("/proc/sys/kernel/osrelease"))
         .unwrap_or_default()
         .trim()
         .to_string();
-    println!("4. Kernel Release:          {}", kver);
+    println!("8. Kernel Release:          {}", kver);
 
-    let wmi_path = hw
-        .sysfs_root()
-        .join("sys/bus/wmi/devices/A70591CE-A997-11DA-B012-B622A1EF5492-34");
+    let lockdown = fs::read_to_string(hw.sysfs_root().join("sys/kernel/security/lockdown"))
+        .or_else(|_| fs::read_to_string("/sys/kernel/security/lockdown"))
+        .unwrap_or_default();
     println!(
-        "5. AWCC WMAX WMI Node:      {}",
-        if wmi_path.exists()
-            || std::path::Path::new("/sys/bus/wmi/devices/A70591CE-A997-11DA-B012-B622A1EF5492-34")
-                .exists()
-        {
-            "FOUND (PNP0C14:0b registered)".green()
+        "9. Secure Boot Status:      {}",
+        if lockdown.contains("[integrity]") || lockdown.contains("[confidentiality]") {
+            "ACTIVE (Lockdown enabled)".green()
+        } else if lockdown.contains("[none]") {
+            "DISABLED (Lockdown none)".yellow()
         } else {
-            "NOT FOUND".red()
+            "UNCONFINED / Securityfs not mounted".dimmed()
         }
     );
 
+    let (perm_ok, violations) = check_sysfs_permissions(hw.sysfs_root());
     println!(
-        "6. alienware_wmi HWMON:     {}",
-        if hw.is_driver_loaded() {
-            "ACTIVE".green()
+        "10. Sysfs Permission Audit: {}",
+        if perm_ok {
+            "PASSED (Zero world-writable nodes detected)".green()
         } else {
-            "INACTIVE (insmod alienware-wmi.ko needed)".red()
+            format!("FAILED: {} violations found", violations.len()).red()
         }
     );
-
-    let (aw_path, smm_path, ct_path, ddv_path) = hw.discover_hwmon_nodes();
-    println!("7. AWCC hwmon sysfs path:   {:?}", aw_path);
-    println!("8. Dell SMM hwmon path:     {:?}", smm_path);
-    println!("9. Coretemp hwmon path:     {:?}", ct_path);
-    println!("10. Dell DDV hwmon path:    {:?}", ddv_path);
+    for v in violations {
+        println!("    - {}", v.red());
+    }
 
     let (profile, choices, provider) = hw.get_platform_profile();
     println!(
         "11. Platform Profile:       {} (Provider: {:?}, Choices: {:?})",
         profile, provider, choices
     );
-    println!("12. Game Shift (G-Mode):    {}", hw.check_gmode_status());
+    println!("12. Fan Control Capability: {:?}", caps.fan_control);
+    println!("13. Game Shift (G-Mode):    {}", hw.check_gmode_status());
     println!("=== Diagnostics Complete ===");
 }
 
 fn cmd_verify(hw: &HardwareManager, step_duration: u64) {
-    if !hw.is_driver_loaded() {
+    let caps = hw.capabilities();
+    if matches!(caps.fan_control, FanControlCapability::None) {
         eprintln!(
-            "{} Cannot run verify ladder: alienware-wmi driver not loaded.",
-            "[-] Error:".bold().red()
+            "{} Cannot run calibration ladder: manual fan control is unsupported on this hardware (Vendor: {}, Tier: {}).",
+            "[-] Error:".bold().red(),
+            caps.vendor,
+            caps.tier
         );
         std::process::exit(1);
     }
 
     println!(
         "{}",
-        "=== AWCC Controlled Step Calibration Ladder ==="
+        "=== Universal Controlled Step Calibration Ladder ==="
             .bold()
             .cyan()
     );
@@ -549,12 +765,12 @@ fn cmd_verify(hw: &HardwareManager, step_duration: u64) {
 
     for &step in &steps {
         println!(
-            "\n[*] Actuating Step: Boost = {}/255 for {} seconds...",
+            "\n[*] Actuating Step: Level = {}/255 for {} seconds...",
             step, step_duration
         );
         for fan in 1..=2 {
-            if let Err(e) = hw.write_fan_boost(fan, step) {
-                eprintln!("[-] Failed to set fan {}: {}", fan, e);
+            if let Err(e) = hw.set_fan_level(fan, step) {
+                eprintln!("[-] Fan {}: {}", fan, e);
             }
         }
 

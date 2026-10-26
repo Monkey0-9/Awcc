@@ -1,0 +1,5 @@
+#!/bin/sh
+# Runit service script for awccd (Universal Linux Hardware Thermal Governor)
+exec 2>&1
+echo "Starting awccd thermal governor..."
+exec /usr/bin/awccd

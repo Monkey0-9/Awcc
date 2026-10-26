@@ -1,0 +1,27 @@
+#!/usr/bin/make -f
+export DH_VERBOSE = 1
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	cargo build --release --manifest-path Cargo.toml
+
+override_dh_auto_install:
+	install -d debian/awcc-linux/usr/bin
+	install -m 0755 target/release/awccctl debian/awcc-linux/usr/bin/awccctl
+	install -m 0755 target/release/awccd debian/awcc-linux/usr/bin/awccd
+	install -m 0755 bin/awcc-gui debian/awcc-linux/usr/bin/awcc-gui
+	install -m 0755 bin/awcc-lux-dashboard.py debian/awcc-linux/usr/bin/awcc-lux-dashboard.py
+	install -m 0755 bin/awcc-mode debian/awcc-linux/usr/bin/awcc-mode
+	install -m 0755 bin/awcc-gameshift-toggle.sh debian/awcc-linux/usr/bin/awcc-gameshift-toggle
+	ln -sf awcc-gameshift-toggle debian/awcc-linux/usr/bin/gmode
+
+	install -d debian/awcc-linux/usr/share/applications
+	install -m 0644 packaging/awcc-gui.desktop debian/awcc-linux/usr/share/applications/awcc-gui.desktop
+
+	install -d debian/awcc-linux/usr/share/icons/hicolor/scalable/apps
+	install -m 0644 packaging/icons/awcc-gui.svg debian/awcc-linux/usr/share/icons/hicolor/scalable/apps/awcc-gui.svg
+
+	install -d debian/awcc-linux/lib/systemd/system
+	install -m 0644 systemd/awccd.service debian/awcc-linux/lib/systemd/system/awccd.service

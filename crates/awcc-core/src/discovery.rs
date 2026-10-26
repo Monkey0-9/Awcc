@@ -1,4 +1,6 @@
+use crate::capabilities::HardwareCapabilities;
 use crate::error::AwccError;
+use crate::providers::{HardwareProvider, ProviderMatch, ProviderRegistry};
 use crate::telemetry::{
     FanTelemetry, GModeStatus, SystemTelemetry, ThermalSensor, ThermalTelemetry,
 };
@@ -12,6 +14,7 @@ pub struct HardwareManager {
     dell_smm_hwmon: Option<PathBuf>,
     coretemp_hwmon: Option<PathBuf>,
     dell_ddv_hwmon: Option<PathBuf>,
+    registry: ProviderRegistry,
 }
 
 impl Default for HardwareManager {
@@ -34,6 +37,7 @@ impl HardwareManager {
             dell_smm_hwmon,
             coretemp_hwmon,
             dell_ddv_hwmon,
+            registry: ProviderRegistry::new(),
         }
     }
 
@@ -522,6 +526,68 @@ impl HardwareManager {
                 .map(|p| p.display().to_string()),
             thermals,
             fans,
+        }
+    }
+
+    pub fn capabilities(&self) -> HardwareCapabilities {
+        if let Some((p, _)) = self.registry.find_best_provider(&self.sysfs_root) {
+            p.capabilities(&self.sysfs_root)
+        } else {
+            let gen = crate::providers::generic::GenericLinuxProvider::new();
+            crate::providers::HardwareProvider::capabilities(&gen, &self.sysfs_root)
+        }
+    }
+
+    pub fn best_provider(&self) -> Option<(&dyn HardwareProvider, ProviderMatch)> {
+        self.registry.find_best_provider(&self.sysfs_root)
+    }
+
+    pub fn set_fan_level(&self, fan_index: u8, level: u8) -> Result<(), AwccError> {
+        if self.alienware_hwmon.is_some() {
+            self.write_fan_boost(fan_index, level)
+        } else if let Some((p, _)) = self.registry.find_best_provider(&self.sysfs_root) {
+            p.set_fan_level(&self.sysfs_root, fan_index, level)
+        } else {
+            Err(AwccError::UnsupportedOperation {
+                operation: "set fan level".to_string(),
+                reason: "No compatible hardware provider discovered".to_string(),
+            })
+        }
+    }
+
+    pub fn set_max_fans(&self) -> Result<(), AwccError> {
+        if self.alienware_hwmon.is_some() {
+            let fans = self.discover_fans();
+            for f in &fans {
+                self.write_fan_boost(f.fan_index, 255)?;
+            }
+            let _ = self.set_platform_profile("performance");
+            Ok(())
+        } else if let Some((p, _)) = self.registry.find_best_provider(&self.sysfs_root) {
+            p.set_max_fans(&self.sysfs_root)
+        } else {
+            Err(AwccError::UnsupportedOperation {
+                operation: "max fans".to_string(),
+                reason: "No compatible hardware provider discovered".to_string(),
+            })
+        }
+    }
+
+    pub fn release_fans(&self) -> Result<(), AwccError> {
+        if self.alienware_hwmon.is_some() {
+            let fans = self.discover_fans();
+            for f in &fans {
+                self.write_fan_boost(f.fan_index, 0)?;
+            }
+            let _ = self.set_platform_profile("balanced");
+            Ok(())
+        } else if let Some((p, _)) = self.registry.find_best_provider(&self.sysfs_root) {
+            p.release_fans(&self.sysfs_root)
+        } else {
+            Err(AwccError::UnsupportedOperation {
+                operation: "release fans".to_string(),
+                reason: "No compatible hardware provider discovered".to_string(),
+            })
         }
     }
 }

@@ -1,0 +1,93 @@
+Name:           awcc-linux
+Version:        0.3.0
+Release:        0
+Summary:        Universal Linux Hardware Performance, Fan Control & Telemetry Suite
+License:        GPL-2.0-or-later AND MIT
+Group:          System/Hardware
+URL:            https://github.com/Monkey0-9/Awcc
+Source0:        %{name}-%{version}.tar.gz
+
+BuildRequires:  cargo
+BuildRequires:  rust
+BuildRequires:  gcc
+BuildRequires:  make
+BuildRequires:  update-desktop-files
+BuildRequires:  pkgconfig(systemd)
+
+Requires:       python3
+Requires:       python3-gobject
+Requires:       python3-gobject-Gdk
+Requires:       typelib-1_0-Gtk-4_0
+Requires:       typelib-1_0-Adw-1
+Requires:       libnotify-tools
+
+%description
+Universal Linux hardware performance, fan control, platform profile management,
+and telemetry monitoring suite supporting Dell Alienware, ASUS, Lenovo, HP,
+Framework, System76, and standard Linux desktop motherboards. Includes CLI,
+responsive terminal dashboard, and modern GTK4/Libadwaita GUI.
+
+%prep
+%setup -q
+
+%build
+cargo build --release --manifest-path Cargo.toml
+
+%install
+# Binaries
+install -d %{buildroot}%{_bindir}
+install -m 0755 target/release/awccctl %{buildroot}%{_bindir}/awccctl
+install -m 0755 target/release/awccd %{buildroot}%{_bindir}/awccd
+install -m 0755 bin/awcc-gui %{buildroot}%{_bindir}/awcc-gui
+install -m 0755 bin/awcc-lux-dashboard.py %{buildroot}%{_bindir}/awcc-lux-dashboard.py
+
+# Shell helpers & symlinks
+install -m 0755 bin/awcc-mode %{buildroot}%{_bindir}/awcc-mode
+install -m 0755 bin/awcc-gameshift-toggle.sh %{buildroot}%{_bindir}/awcc-gameshift-toggle
+ln -sf %{_bindir}/awcc-gameshift-toggle %{buildroot}%{_bindir}/gmode
+
+for m in battery quiet balance mid high ultra; do
+    if [ -f "bin/awcc-${m}" ]; then
+        install -m 0755 "bin/awcc-${m}" "%{buildroot}%{_bindir}/awcc-${m}"
+    fi
+done
+
+# Systemd Unit
+install -d %{buildroot}%{_unitdir}
+install -m 0644 systemd/awccd.service %{buildroot}%{_unitdir}/awccd.service
+
+# Desktop Entry & Icon
+install -d %{buildroot}%{_datadir}/applications
+install -m 0644 packaging/awcc-gui.desktop %{buildroot}%{_datadir}/applications/awcc-gui.desktop
+
+install -d %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
+install -m 0644 packaging/icons/awcc-gui.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
+
+%pre
+%service_add_pre awccd.service
+
+%post
+%service_add_post awccd.service
+
+%preun
+%service_del_preun awccd.service
+
+%postun
+%service_del_postun awccd.service
+
+%files
+%{_bindir}/awccctl
+%{_bindir}/awccd
+%{_bindir}/awcc-gui
+%{_bindir}/awcc-lux-dashboard.py
+%{_bindir}/awcc-mode
+%{_bindir}/awcc-gameshift-toggle
+%{_bindir}/gmode
+%{_bindir}/awcc-*
+%{_unitdir}/awccd.service
+%{_datadir}/applications/awcc-gui.desktop
+%{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
+
+%changelog
+* Mon Oct 26 2026 AWCC Linux Team <support@awcc-linux.org>
+- Initial openSUSE package for version 0.3.0

@@ -46,5 +46,16 @@ jobs:
       - name: Documentation Claims & License Verification Check
         run: ./tests/doc_claims_verification.sh
 
-      - name: Python Dashboard Syntax Verification
-        run: python3 -m py_compile bin/awcc-lux-dashboard.py
+      - name: Python Dashboard & GUI Syntax Verification
+        run: |
+          python3 -m py_compile bin/awcc-lux-dashboard.py
+          python3 -m py_compile bin/awcc-gui
+
+      - name: Multi-Vendor CLI Verification
+        run: ./tests/test_multi_vendor_cli.sh
+
+      - name: Multi-Distribution Packaging Syntax Verification
+        run: ./tests/distro_packaging_syntax_test.sh
+
+      - name: Desktop GUI Smoke Test
+        run: ./tests/gui_smoke_test.sh

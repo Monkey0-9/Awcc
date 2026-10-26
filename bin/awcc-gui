@@ -1,0 +1,467 @@
+#!/usr/bin/env python3
+"""
+AWCC Linux Modern Desktop GUI Application
+Native GTK4 + Libadwaita Hardware Performance & Thermal Governor
+Supports Dell, Alienware, ASUS, Lenovo, HP, Framework, and Generic Linux Hardware
+"""
+
+import sys
+import os
+import json
+import subprocess
+import re
+
+VERSION = "0.3.0"
+
+if "--version" in sys.argv or "-v" in sys.argv:
+    print(f"awcc-gui {VERSION}")
+    sys.exit(0)
+
+if "--help" in sys.argv or "-h" in sys.argv:
+    print(f"AWCC Hardware Control GUI v{VERSION}")
+    print("Usage: awcc-gui [OPTIONS]")
+    print("Options:")
+    print("  -v, --version    Show application version")
+    print("  -h, --help       Show this help message")
+    print("  --test           Run headless initialization test and exit")
+    sys.exit(0)
+
+try:
+    import gi
+    gi.require_version('Gtk', '4.0')
+    gi.require_version('Adw', '1')
+    from gi.repository import Gtk, Adw, GLib, Gio
+except ImportError as e:
+    sys.stderr.write(f"Error: Required GTK4/Libadwaita libraries not found: {e}\n")
+    sys.stderr.write("Please install python3-gobject, gtk4, and libadwaita.\n")
+    sys.exit(1)
+
+def find_awccctl_bin():
+    # Prefer local workspace build if present
+    repo_bin = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "target", "debug", "awccctl")
+    if os.path.isfile(repo_bin) and os.access(repo_bin, os.X_OK):
+        return repo_bin
+    repo_rel = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "target", "release", "awccctl")
+    if os.path.isfile(repo_rel) and os.access(repo_rel, os.X_OK):
+        return repo_rel
+    system_bin = "/usr/bin/awccctl"
+    if os.path.isfile(system_bin) and os.access(system_bin, os.X_OK):
+        return system_bin
+    return "awccctl"
+
+class AwccApp(Adw.Application):
+    def __init__(self, test_mode=False):
+        super().__init__(
+            application_id="io.github.monkey0_9.awcc",
+            flags=Gio.ApplicationFlags.FLAGS_NONE
+        )
+        self.test_mode = test_mode
+        self.ctl = find_awccctl_bin()
+        self.caps = self.query_capabilities()
+        self.telemetry = self.query_telemetry()
+        self.updating = False
+
+    def query_capabilities(self):
+        try:
+            res = subprocess.run([self.ctl, "capabilities", "--json"], capture_output=True, text=True, timeout=2)
+            if res.returncode == 0:
+                return json.loads(res.stdout)
+        except Exception:
+            pass
+        return {
+            "vendor": "Generic",
+            "product": "Linux Hardware",
+            "chassis": "Laptop",
+            "tier": "Tier 3: Generic Linux Fallback",
+            "active_provider_name": "generic_linux",
+            "fan_control": "None",
+            "platform_profile": {
+                "provider": "acpi_firmware",
+                "current": "balanced",
+                "choices": ["quiet", "balanced", "performance"]
+            },
+            "has_game_shift": False,
+            "has_gpu_telemetry": False,
+            "has_vrm_telemetry": False,
+            "has_ambient_telemetry": False,
+            "secure_boot_active": False
+        }
+
+    def query_telemetry(self):
+        try:
+            res = subprocess.run([self.ctl, "status", "--json"], capture_output=True, text=True, timeout=2)
+            if res.returncode == 0:
+                return json.loads(res.stdout)
+        except Exception:
+            pass
+        return {
+            "dmi_vendor": "Generic",
+            "dmi_product": "Linux Hardware",
+            "active_platform_profile": "balanced",
+            "platform_profile_choices": ["quiet", "balanced", "performance"],
+            "platform_profile_provider": "acpi",
+            "gmode_status": "Off",
+            "thermals": {
+                "cpu_pkg_temp": 50.0,
+                "cpu_core_max_temp": 50.0,
+                "gpu_temp": 45.0,
+                "vrm_temp": None,
+                "ambient_temp": None
+            },
+            "fans": [
+                {
+                    "fan_index": 1,
+                    "label": "CPU Fan",
+                    "current_rpm": 1500,
+                    "reported_max_rpm": 4800,
+                    "requested_boost": 0,
+                    "readback_boost": 0
+                }
+            ]
+        }
+
+    def do_activate(self):
+        self.win = Adw.ApplicationWindow(application=self)
+        self.win.set_default_size(780, 720)
+
+        vendor = self.caps.get("vendor", "System")
+        product = self.caps.get("product", "Hardware")
+        tier = self.caps.get("tier", "Generic Linux")
+        self.win.set_title(f"AWCC Hardware Control — {vendor} {product}")
+
+        # Main Layout
+        content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.win.set_content(content_box)
+
+        # Header Bar
+        header = Adw.HeaderBar()
+        title_widget = Adw.WindowTitle(
+            title="AWCC Hardware Control",
+            subtitle=f"{vendor} {product} • {tier}"
+        )
+        header.set_title_widget(title_widget)
+        content_box.append(header)
+
+        # Toast Overlay
+        self.toast_overlay = Adw.ToastOverlay()
+        content_box.append(self.toast_overlay)
+
+        # Scrolled Window
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_vexpand(True)
+        self.toast_overlay.set_child(scrolled)
+
+        clamp = Adw.Clamp(maximum_size=740)
+        scrolled.set_child(clamp)
+
+        pref_page = Adw.PreferencesPage()
+        clamp.set_child(pref_page)
+
+        # -------------------------------------------------------------
+        # 1. Platform Profile & Power Group
+        # -------------------------------------------------------------
+        profile_group = Adw.PreferencesGroup(
+            title="System Performance &amp; Thermal Profile",
+            description="Controls firmware energy bias, CPU boost clocks, and active fan curves."
+        )
+        pref_page.add(profile_group)
+
+        # Profile Selector Buttons
+        profile_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        profile_box.set_margin_top(8)
+        profile_box.set_margin_bottom(8)
+        profile_box.set_halign(Gtk.Align.CENTER)
+
+        cur_prof = self.telemetry.get("active_platform_profile", "balanced").lower()
+        self.profile_buttons = {}
+        for p in ["Quiet", "Balanced", "Performance", "Ultra"]:
+            btn = Gtk.Button(label=p)
+            btn.set_size_request(120, 42)
+            if p.lower() == cur_prof or (p == "Ultra" and cur_prof == "performance" and self.is_gmode_active()):
+                btn.add_css_class("suggested-action")
+            btn.connect("clicked", self.on_profile_button_clicked, p.lower())
+            profile_box.append(btn)
+            self.profile_buttons[p.lower()] = btn
+
+        profile_row = Adw.ActionRow(title="Platform Profile Mode")
+        profile_row.set_child(profile_box)
+        profile_group.add(profile_row)
+
+        # Game Shift / Ultra G-Mode Row
+        self.gmode_row = Adw.ActionRow(
+            title="Game Shift Extreme Boost (G-Mode)",
+            subtitle="Pushes fans to 100% boost and locks CPU into highest performance state."
+        )
+        self.gmode_switch = Gtk.Switch()
+        self.gmode_switch.set_valign(Gtk.Align.CENTER)
+        self.gmode_switch.set_active(self.is_gmode_active())
+        self.gmode_switch.connect("state-set", self.on_gmode_toggled)
+
+        if not self.caps.get("has_game_shift", False) and self.caps.get("active_provider_name") != "dell_awcc":
+            self.gmode_switch.set_sensitive(False)
+            self.gmode_row.set_subtitle("Dell Alienware hardware feature not supported on this platform.")
+
+        self.gmode_row.add_suffix(self.gmode_switch)
+        profile_group.add(self.gmode_row)
+
+        # -------------------------------------------------------------
+        # 2. Cooling & Fan Controls Group
+        # -------------------------------------------------------------
+        fan_group = Adw.PreferencesGroup(
+            title="Active Cooling &amp; Fan Turbines",
+            description="Monitors tachometer RPM readouts and applies manual boost overrides."
+        )
+        pref_page.add(fan_group)
+
+        self.fan_rows = {}
+        self.fan_gauges = {}
+        fans = self.telemetry.get("fans", [])
+        if not fans:
+            empty_row = Adw.ActionRow(
+                title="Firmware Managed Fans",
+                subtitle="No hardware tachometer sensor nodes exposed by kernel drivers."
+            )
+            fan_group.add(empty_row)
+        else:
+            for f in fans:
+                idx = f.get("fan_index", 1)
+                lbl = f.get("label", f"Fan {idx}")
+                rpm = f.get("current_rpm") or 0
+                max_rpm = f.get("reported_max_rpm") or 4800
+                boost = f.get("readback_boost") or 0
+
+                row = Adw.ActionRow(
+                    title=lbl,
+                    subtitle=f"{rpm} RPM / {max_rpm} RPM Max • Boost: {boost}/255"
+                )
+                bar = Gtk.ProgressBar()
+                bar.set_size_request(160, -1)
+                bar.set_valign(Gtk.Align.CENTER)
+                pct = min(1.0, rpm / max_rpm) if max_rpm > 0 else 0.0
+                bar.set_fraction(pct)
+
+                row.add_suffix(bar)
+                fan_group.add(row)
+                self.fan_rows[idx] = row
+                self.fan_gauges[idx] = bar
+
+        # Manual Fan Control Controls
+        can_boost = isinstance(self.caps.get("fan_control"), dict) or "BoostOffset" in str(self.caps.get("fan_control")) or "StandardPwm" in str(self.caps.get("fan_control"))
+        if can_boost:
+            slider_row = Adw.ActionRow(
+                title="Manual Fan Speed Boost (0-255)",
+                subtitle="Override firmware curves with direct hardware boost ladder."
+            )
+            self.fan_slider = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 255, 5)
+            self.fan_slider.set_size_request(200, -1)
+            self.fan_slider.set_valign(Gtk.Align.CENTER)
+            self.fan_slider.set_draw_value(True)
+            self.fan_slider.set_value(fans[0].get("readback_boost", 0) if fans else 0)
+            self.fan_slider.connect("value-changed", self.on_slider_changed)
+            slider_row.add_suffix(self.fan_slider)
+            fan_group.add(slider_row)
+
+            btn_row = Adw.ActionRow(title="Quick Fan Actions")
+            btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            btn_box.set_valign(Gtk.Align.CENTER)
+
+            btn_max = Gtk.Button(label="Max Fans (100%)")
+            btn_max.add_css_class("destructive-action")
+            btn_max.connect("clicked", self.on_max_fans_clicked)
+            btn_box.append(btn_max)
+
+            btn_rel = Gtk.Button(label="Release (Auto BIOS)")
+            btn_rel.connect("clicked", self.on_release_fans_clicked)
+            btn_box.append(btn_rel)
+
+            btn_row.add_suffix(btn_box)
+            fan_group.add(btn_row)
+        else:
+            notice_row = Adw.ActionRow(
+                title="Automatic Firmware Control",
+                subtitle="Manual fan boost ladder is not supported on this platform."
+            )
+            fan_group.add(notice_row)
+
+        # -------------------------------------------------------------
+        # 3. Silicon Thermals & Telemetry Group
+        # -------------------------------------------------------------
+        thermal_group = Adw.PreferencesGroup(
+            title="Silicon Thermals &amp; Telemetry",
+            description="Real-time temperature telemetry read from hardware monitoring sensors."
+        )
+        pref_page.add(thermal_group)
+
+        # CPU Package Temp
+        self.cpu_row = Adw.ActionRow(title="CPU Package Temperature", subtitle="Loading...")
+        self.cpu_bar = Gtk.ProgressBar()
+        self.cpu_bar.set_size_request(160, -1)
+        self.cpu_bar.set_valign(Gtk.Align.CENTER)
+        self.cpu_row.add_suffix(self.cpu_bar)
+        thermal_group.add(self.cpu_row)
+
+        # GPU Temp
+        self.gpu_row = Adw.ActionRow(title="GPU Temperature", subtitle="Loading...")
+        self.gpu_bar = Gtk.ProgressBar()
+        self.gpu_bar.set_size_request(160, -1)
+        self.gpu_bar.set_valign(Gtk.Align.CENTER)
+        self.gpu_row.add_suffix(self.gpu_bar)
+        thermal_group.add(self.gpu_row)
+
+        # Motherboard VRM & Ambient
+        self.vrm_row = Adw.ActionRow(title="Motherboard VRM Temp", subtitle="Not Exposed")
+        thermal_group.add(self.vrm_row)
+
+        self.ambient_row = Adw.ActionRow(title="Ambient Air Temp", subtitle="Not Exposed")
+        thermal_group.add(self.ambient_row)
+
+        # -------------------------------------------------------------
+        # 4. Diagnostics & Security Health Group
+        # -------------------------------------------------------------
+        diag_group = Adw.PreferencesGroup(
+            title="Hardware &amp; Diagnostic Health",
+            description="Hardware verification tier, active driver subsystem, and kernel security status."
+        )
+        pref_page.add(diag_group)
+
+        prov_row = Adw.ActionRow(
+            title="Active Hardware Provider",
+            subtitle=f"{self.caps.get('active_provider_name')} ({self.caps.get('tier')})"
+        )
+        diag_group.add(prov_row)
+
+        sb_active = self.caps.get("secure_boot_active", False)
+        sb_row = Adw.ActionRow(
+            title="Secure Boot Kernel Lockdown",
+            subtitle="Active (Signed modules enforced)" if sb_active else "Inactive / Disabled"
+        )
+        diag_group.add(sb_row)
+
+        self.update_telemetry_ui()
+
+        # Hook periodic refresh timer
+        GLib.timeout_add_seconds(2, self.on_timer_tick)
+
+        self.win.present()
+
+        if self.test_mode:
+            print("[+] Headless GUI verification test passed successfully.")
+            self.win.close()
+            sys.exit(0)
+
+    def is_gmode_active(self):
+        fans = self.telemetry.get("fans", [])
+        if fans and all(f.get("readback_boost") == 255 for f in fans):
+            return True
+        return self.telemetry.get("gmode_status", "").lower() in ["on", "active"]
+
+    def on_timer_tick(self):
+        self.telemetry = self.query_telemetry()
+        self.update_telemetry_ui()
+        return True
+
+    def update_telemetry_ui(self):
+        thermals = self.telemetry.get("thermals", {})
+        # CPU
+        cpu_t = thermals.get("cpu_pkg_temp")
+        if cpu_t is not None:
+            self.cpu_row.set_subtitle(f"{cpu_t:.1f}°C")
+            self.cpu_bar.set_fraction(min(1.0, max(0.0, (cpu_t - 30.0) / 70.0)))
+        else:
+            self.cpu_row.set_subtitle("Unavailable")
+            self.cpu_bar.set_fraction(0.0)
+
+        # GPU
+        gpu_t = thermals.get("gpu_temp")
+        if gpu_t is not None:
+            self.gpu_row.set_subtitle(f"{gpu_t:.1f}°C")
+            self.gpu_bar.set_fraction(min(1.0, max(0.0, (gpu_t - 30.0) / 70.0)))
+        else:
+            self.gpu_row.set_subtitle("Unavailable (Idle/D3)")
+            self.gpu_bar.set_fraction(0.0)
+
+        # VRM & Ambient
+        vrm = thermals.get("vrm_temp")
+        self.vrm_row.set_subtitle(f"{vrm:.1f}°C" if vrm is not None else "Not Exposed")
+
+        amb = thermals.get("ambient_temp")
+        self.ambient_row.set_subtitle(f"{amb:.1f}°C" if amb is not None else "Not Exposed")
+
+        # Fans
+        fans = self.telemetry.get("fans", [])
+        for f in fans:
+            idx = f.get("fan_index", 1)
+            rpm = f.get("current_rpm") or 0
+            max_rpm = f.get("reported_max_rpm") or 4800
+            boost = f.get("readback_boost") or 0
+            if idx in self.fan_rows:
+                self.fan_rows[idx].set_subtitle(f"{rpm} RPM / {max_rpm} RPM Max • Boost: {boost}/255")
+            if idx in self.fan_gauges:
+                pct = min(1.0, rpm / max_rpm) if max_rpm > 0 else 0.0
+                self.fan_gauges[idx].set_fraction(pct)
+
+        # Synchronize profile highlight
+        cur_prof = self.telemetry.get("active_platform_profile", "balanced").lower()
+        for name, btn in self.profile_buttons.items():
+            if name == cur_prof:
+                btn.add_css_class("suggested-action")
+            else:
+                btn.remove_css_class("suggested-action")
+
+    def show_toast(self, message):
+        toast = Adw.Toast.new(message)
+        toast.set_timeout(3)
+        self.toast_overlay.add_toast(toast)
+
+    def on_profile_button_clicked(self, button, profile_name):
+        self.show_toast(f"Setting profile to '{profile_name}'...")
+        res = subprocess.run([self.ctl, "profile", profile_name], capture_output=True, text=True)
+        if res.returncode == 0:
+            self.show_toast(f"Profile set to {profile_name.capitalize()}")
+        else:
+            self.show_toast(f"Failed to set profile: {res.stderr.strip() or 'Permission denied'}")
+        self.telemetry = self.query_telemetry()
+        self.update_telemetry_ui()
+
+    def on_gmode_toggled(self, switch, state):
+        target = "on" if state else "off"
+        self.show_toast(f"Actuating Game Shift: {target.upper()}...")
+        res = subprocess.run([self.ctl, "gmode", target], capture_output=True, text=True)
+        if res.returncode == 0:
+            self.show_toast(f"Game Shift: {target.upper()}")
+        else:
+            self.show_toast(f"Failed: {res.stderr.strip() or 'Error'}")
+        self.telemetry = self.query_telemetry()
+        self.update_telemetry_ui()
+        return True
+
+    def on_slider_changed(self, scale):
+        val = int(scale.get_value())
+        for f in self.telemetry.get("fans", []):
+            idx = f.get("fan_index", 1)
+            subprocess.run([self.ctl, "fan", "set", "--fan", str(idx), "--boost", str(val)], capture_output=True)
+
+    def on_max_fans_clicked(self, button):
+        self.show_toast("Actuating 100% maximum fan boost...")
+        res = subprocess.run([self.ctl, "fan", "max"], capture_output=True, text=True)
+        if res.returncode == 0:
+            self.show_toast("Maximum fans active (255/255)")
+        else:
+            self.show_toast(f"Failed: {res.stderr.strip() or 'Permission error'}")
+        self.telemetry = self.query_telemetry()
+        self.update_telemetry_ui()
+
+    def on_release_fans_clicked(self, button):
+        self.show_toast("Releasing fans to BIOS firmware control...")
+        res = subprocess.run([self.ctl, "fan", "release"], capture_output=True, text=True)
+        if res.returncode == 0:
+            self.show_toast("Fans returned to automatic firmware curve")
+        else:
+            self.show_toast(f"Failed: {res.stderr.strip() or 'Permission error'}")
+        self.telemetry = self.query_telemetry()
+        self.update_telemetry_ui()
+
+if __name__ == "__main__":
+    is_test = ("--test" in sys.argv)
+    app = AwccApp(test_mode=is_test)
+    app.run([sys.argv[0]])

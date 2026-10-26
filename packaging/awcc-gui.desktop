@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=AWCC Hardware Control
+GenericName=Thermal & Hardware Performance Governor
+Comment=Universal Linux Hardware Performance, Fan Control & Telemetry Suite
+Exec=awcc-gui
+Icon=awcc-gui
+Terminal=false
+Type=Application
+Categories=System;HardwareSettings;Settings;Utility;
+Keywords=awcc;alienware;dell;asus;lenovo;thinkpad;fan;thermal;performance;gmode;
+StartupNotify=true

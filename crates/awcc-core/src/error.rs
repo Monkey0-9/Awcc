@@ -48,4 +48,13 @@ pub enum AwccError {
 
     #[error("Sensor unavailable: {0}")]
     SensorUnavailable(String),
+
+    #[error("Unsupported operation '{operation}': {reason}")]
+    UnsupportedOperation { operation: String, reason: String },
+
+    #[error("Hardware vendor not detected: {0}")]
+    VendorNotDetected(String),
+
+    #[error("Feature '{feature}' is unavailable on {vendor} hardware")]
+    CapabilityUnavailable { feature: String, vendor: String },
 }

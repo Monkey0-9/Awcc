@@ -325,11 +325,11 @@ Comprehensive Rust integration tests mocking diverse hardware sysfs trees:
 - Consumes: `thiserror::Error`, `serde::{Serialize, Deserialize}`
 - Produces: `HardwareVendor`, `ChassisType`, `VerificationTier`, `FanControlCapability`, `PlatformProfileCapability`, `HardwareCapabilities`, `HardwareProvider` trait.
 
-- [ ] **Step 1: Write failing unit test for capability taxonomy**
-- [ ] **Step 2: Run `cargo test --test capability_tests` to verify failure**
-- [ ] **Step 3: Implement `capabilities.rs` and `providers/mod.rs`**
-- [ ] **Step 4: Run `cargo test --test capability_tests` to verify pass**
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write failing unit test for capability taxonomy**
+- [x] **Step 2: Run `cargo test --test capability_tests` to verify failure**
+- [x] **Step 3: Implement `capabilities.rs` and `providers/mod.rs`**
+- [x] **Step 4: Run `cargo test --test capability_tests` to verify pass**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -343,11 +343,11 @@ Comprehensive Rust integration tests mocking diverse hardware sysfs trees:
 - Consumes: `/sys/class/platform-profile`, `/sys/class/hwmon`, `/sys/class/thermal`, `/sys/class/powercap`
 - Produces: `GenericLinuxProvider` implementing `HardwareProvider` for any standard Linux machine, desktop motherboard, or ultrabook.
 
-- [ ] **Step 1: Write failing test with mock standard desktop sysfs**
-- [ ] **Step 2: Run `cargo test --test generic_provider_test` to verify failure**
-- [ ] **Step 3: Implement `GenericLinuxProvider`**
-- [ ] **Step 4: Run `cargo test --test generic_provider_test` to verify pass**
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write failing test with mock standard desktop sysfs**
+- [x] **Step 2: Run `cargo test --test generic_provider_test` to verify failure**
+- [x] **Step 3: Implement `GenericLinuxProvider`**
+- [x] **Step 4: Run `cargo test --test generic_provider_test` to verify pass**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -365,11 +365,11 @@ Comprehensive Rust integration tests mocking diverse hardware sysfs trees:
 - Consumes: Vendor sysfs paths and DMI vendor identification.
 - Produces: Implementations of `HardwareProvider` for Dell, Asus, Lenovo, HP, and Framework.
 
-- [ ] **Step 1: Write failing unit tests for vendor matching and capability extraction**
-- [ ] **Step 2: Run `cargo test --test vendor_providers_test` to verify failure**
-- [ ] **Step 3: Implement vendor providers**
-- [ ] **Step 4: Run `cargo test --test vendor_providers_test` to verify pass**
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write failing unit tests for vendor matching and capability extraction**
+- [x] **Step 2: Run `cargo test --test vendor_providers_test` to verify failure**
+- [x] **Step 3: Implement vendor providers**
+- [x] **Step 4: Run `cargo test --test vendor_providers_test` to verify pass**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -384,11 +384,11 @@ Comprehensive Rust integration tests mocking diverse hardware sysfs trees:
 - Consumes: All providers via `ProviderRegistry`.
 - Produces: Capability-aware `HardwareManager::capabilities()`, `HardwareManager::get_telemetry()`, `HardwareManager::set_platform_profile()`, `HardwareManager::set_fan_level()`.
 
-- [ ] **Step 1: Write failing multi-vendor mock integration tests**
-- [ ] **Step 2: Run `cargo test --test multi_vendor_mock_tests` to verify failure**
-- [ ] **Step 3: Refactor `HardwareManager` to delegate to active provider with capability guards**
-- [ ] **Step 4: Run `cargo test --test multi_vendor_mock_tests` to verify pass**
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write failing multi-vendor mock integration tests**
+- [x] **Step 2: Run `cargo test --test multi_vendor_mock_tests` to verify failure**
+- [x] **Step 3: Refactor `HardwareManager` to delegate to active provider with capability guards**
+- [x] **Step 4: Run `cargo test --test multi_vendor_mock_tests` to verify pass**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -401,11 +401,11 @@ Comprehensive Rust integration tests mocking diverse hardware sysfs trees:
 - Consumes: `HardwareManager` capability methods.
 - Produces: `awccctl capabilities`, multi-vendor `awccctl detect`, capability-safe `awccctl fan`, comprehensive `awccctl doctor`.
 
-- [ ] **Step 1: Write test script checking CLI command outputs under mock hardware trees**
-- [ ] **Step 2: Run test script to verify failure**
-- [ ] **Step 3: Implement new subcommands and capability handling in `main.rs`**
-- [ ] **Step 4: Run test script to verify pass**
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write test script checking CLI command outputs under mock hardware trees**
+- [x] **Step 2: Run test script to verify failure**
+- [x] **Step 3: Implement new subcommands and capability handling in `main.rs`**
+- [x] **Step 4: Run test script to verify pass**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -418,10 +418,10 @@ Comprehensive Rust integration tests mocking diverse hardware sysfs trees:
 - Consumes: Dynamic telemetry JSON or sysfs across vendors.
 - Produces: Auto-scaling multi-gauge ANSI cockpit with vendor/tier badge and capability-gated key controls.
 
-- [ ] **Step 1: Test current dashboard snapshot on mock non-Dell hardware tree**
-- [ ] **Step 2: Update `bin/awcc-lux-dashboard.py` to handle dynamic sensor counts and capability flags**
-- [ ] **Step 3: Run snapshot verification test across multiple simulated hardware environments**
-- [ ] **Step 4: Commit**
+- [x] **Step 1: Test current dashboard snapshot on mock non-Dell hardware tree**
+- [x] **Step 2: Update `bin/awcc-lux-dashboard.py` to handle dynamic sensor counts and capability flags**
+- [x] **Step 3: Run snapshot verification test across multiple simulated hardware environments**
+- [x] **Step 4: Commit**
 
 ---
 
@@ -436,10 +436,10 @@ Comprehensive Rust integration tests mocking diverse hardware sysfs trees:
 - Consumes: Python 3 with GTK4 / Libadwaita (`gi.repository.Gtk`, `gi.repository.Adw`).
 - Produces: Native desktop launcher and visual hardware control window.
 
-- [ ] **Step 1: Write smoke test for `awcc-gui` launching in offscreen/test mode**
-- [ ] **Step 2: Implement `bin/awcc-gui` and XDG desktop entry**
-- [ ] **Step 3: Run smoke test to verify pass**
-- [ ] **Step 4: Commit**
+- [x] **Step 1: Write smoke test for `awcc-gui` launching in offscreen/test mode**
+- [x] **Step 2: Implement `bin/awcc-gui` and XDG desktop entry**
+- [x] **Step 3: Run smoke test to verify pass**
+- [x] **Step 4: Commit**
 
 ---
 
@@ -462,11 +462,11 @@ Comprehensive Rust integration tests mocking diverse hardware sysfs trees:
 - Consumes: Distro package manager conventions and system init standards.
 - Produces: Verified multi-distribution packaging specs and universal installer/recovery tools.
 
-- [ ] **Step 1: Write packaging syntax and installation test script**
-- [ ] **Step 2: Run test script to verify failure**
-- [ ] **Step 3: Create packaging files, OpenRC/runit units, and installer/uninstaller scripts**
-- [ ] **Step 4: Run test script to verify pass**
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write packaging syntax and installation test script**
+- [x] **Step 2: Run test script to verify failure**
+- [x] **Step 3: Create packaging files, OpenRC/runit units, and installer/uninstaller scripts**
+- [x] **Step 4: Run test script to verify pass**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -482,10 +482,10 @@ Comprehensive Rust integration tests mocking diverse hardware sysfs trees:
 - Consumes: Compatibility evidence criteria and multi-vendor driver taxonomy.
 - Produces: Complete documentation suite for universal hardware and cross-distro operation.
 
-- [ ] **Step 1: Update documentation and compatibility matrix**
-- [ ] **Step 2: Run security permissions and portability checks**
-- [ ] **Step 3: Verify all markdown and references**
-- [ ] **Step 4: Commit**
+- [x] **Step 1: Update documentation and compatibility matrix**
+- [x] **Step 2: Run security permissions and portability checks**
+- [x] **Step 3: Verify all markdown and references**
+- [x] **Step 4: Commit**
 
 ---
 

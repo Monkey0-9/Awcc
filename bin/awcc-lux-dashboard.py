@@ -25,6 +25,11 @@ import re
 import unicodedata
 import shutil
 
+SYSFS_ROOT = "/"
+
+def sysfs_path(rel):
+    return os.path.join(SYSFS_ROOT, rel.lstrip("/"))
+
 # Strips ANSI escape codes to compute visible terminal width
 ANSI_RE = re.compile(r'\x1b\[[0-9;]*[mGKHJ?]')
 
@@ -198,7 +203,7 @@ def format_telemetry_line(label, gauge_str, val_str, mid_str, right_str, inner_w
     return make_row(line, inner_width)
 
 def find_hwmon_by_name(target_name):
-    hwmon_base = "/sys/class/hwmon"
+    hwmon_base = sysfs_path("sys/class/hwmon")
     if not os.path.isdir(hwmon_base):
         return None
     for d in os.listdir(hwmon_base):
@@ -216,8 +221,86 @@ def find_hwmon_by_name(target_name):
 def get_hwmon():
     return find_hwmon_by_name("alienware_wmi")
 
+def get_dmi_info():
+    vendor = "Generic"
+    product = "Linux PC"
+    try:
+        v_path = sysfs_path("sys/devices/virtual/dmi/id/sys_vendor")
+        if os.path.isfile(v_path):
+            with open(v_path) as f:
+                vendor = f.read().strip()
+        p_path = sysfs_path("sys/devices/virtual/dmi/id/product_name")
+        if os.path.isfile(p_path):
+            with open(p_path) as f:
+                product = f.read().strip()
+    except Exception:
+        pass
+    return vendor, product
+
+def get_os_release():
+    distro = "Linux"
+    try:
+        os_path = sysfs_path("etc/os-release")
+        if not os.path.isfile(os_path):
+            os_path = "/etc/os-release"
+        if os.path.isfile(os_path):
+            with open(os_path) as f:
+                content = f.read()
+                m_id = re.search(r'^ID=(.+)$', content, re.MULTILINE)
+                m_ver = re.search(r'^VERSION_ID=(.+)$', content, re.MULTILINE)
+                if m_id and m_ver:
+                    distro_id = m_id.group(1).strip('"').upper()
+                    ver = m_ver.group(1).strip('"')
+                    return f"{distro_id} {ver}"
+                for line in content.splitlines():
+                    if line.startswith("PRETTY_NAME="):
+                        distro = line.strip().split("=", 1)[1].strip('"')
+                        distro = re.sub(r'\(.*?\)', '', distro).strip()
+                        break
+    except Exception:
+        pass
+    return distro
+
+def get_cpu_model():
+    model = "CPU"
+    try:
+        proc_cpu = sysfs_path("proc/cpuinfo")
+        if not os.path.isfile(proc_cpu):
+            proc_cpu = "/proc/cpuinfo"
+        if os.path.isfile(proc_cpu):
+            with open(proc_cpu) as f:
+                for line in f:
+                    if "model name" in line:
+                        m = line.split(":", 1)[1].strip()
+                        m = re.sub(r'\(R\)|\(TM\)|Processor|CPU|@.*', '', m).strip()
+                        words = m.split()
+                        model = " ".join(words[:2]) if words else "CPU"
+                        break
+    except Exception:
+        pass
+    return model
+
+def get_gpu_name():
+    try:
+        res = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], capture_output=True, text=True, timeout=1)
+        if res.returncode == 0 and res.stdout.strip():
+            name = res.stdout.strip().split("\n")[0]
+            name = re.sub(r'NVIDIA GeForce | Laptop GPU', '', name).strip()
+            return f"{name} GPU"
+    except Exception:
+        pass
+    return "GPU ACCELERATOR"
+
+def get_verification_tier(vendor, has_aw_hwmon):
+    v = vendor.lower()
+    if ("dell" in v or "alienware" in v) and has_aw_hwmon:
+        return "[TIER 1]"
+    elif any(k in v for k in ["asus", "lenovo", "hp", "framework", "system76", "dell", "alienware"]):
+        return "[TIER 2]"
+    return "[TIER 3]"
+
 def get_platform_profile_path():
-    class_dir = "/sys/class/platform-profile"
+    class_dir = sysfs_path("sys/class/platform-profile")
     if os.path.isdir(class_dir):
         # 1. Prefer alienware-wmi class provider
         for entry in sorted(os.listdir(class_dir)):
@@ -238,7 +321,7 @@ def get_platform_profile_path():
             if os.path.isfile(prof):
                 return prof
     # 3. Fall back to firmware acpi node
-    acpi_node = "/sys/firmware/acpi/platform_profile"
+    acpi_node = sysfs_path("sys/firmware/acpi/platform_profile")
     if os.path.isfile(acpi_node):
         return acpi_node
     return None
@@ -352,6 +435,7 @@ def get_gpu_info():
 
 def get_fans(aw_hwmon):
     b1, b2, r1, r2 = 0, 0, 0, 0
+    fans = []
     if aw_hwmon and os.path.isdir(aw_hwmon):
         try:
             with open(os.path.join(aw_hwmon, "fan1_boost"), "r") as f: b1 = int(f.read().strip())
@@ -360,17 +444,39 @@ def get_fans(aw_hwmon):
             with open(os.path.join(aw_hwmon, "fan2_input"), "r") as f: r2 = int(f.read().strip())
         except Exception:
             pass
-    if r1 == 0 or r2 == 0:
-        smm_p = find_hwmon_by_name("dell_smm")
-        if smm_p:
-            try:
-                if r1 == 0 and os.path.isfile(f"{smm_p}/fan1_input"):
-                    with open(f"{smm_p}/fan1_input", "r") as f: r1 = int(f.read().strip())
-                if r2 == 0 and os.path.isfile(f"{smm_p}/fan2_input"):
-                    with open(f"{smm_p}/fan2_input", "r") as f: r2 = int(f.read().strip())
-            except Exception:
-                pass
-    return b1, b2, r1, r2
+        m1, m2 = get_fan_max(aw_hwmon)
+        fans.append({"index": 1, "label": "FAN 1 (CPU)", "boost": b1, "rpm": r1, "max": m1, "controllable": True})
+        fans.append({"index": 2, "label": "FAN 2 (GPU)", "boost": b2, "rpm": r2, "max": m2, "controllable": True})
+    else:
+        # Check standard hwmon chips
+        hwmon_base = sysfs_path("sys/class/hwmon")
+        if os.path.isdir(hwmon_base):
+            for d in sorted(os.listdir(hwmon_base)):
+                p = os.path.join(hwmon_base, d)
+                if not os.path.isdir(p):
+                    continue
+                found_in_chip = False
+                for i in range(1, 9):
+                    inp = os.path.join(p, f"fan{i}_input")
+                    if os.path.isfile(inp):
+                        rpm = 0
+                        try:
+                            with open(inp) as f: rpm = int(f.read().strip())
+                        except Exception: pass
+                        lbl_f = os.path.join(p, f"fan{i}_label")
+                        lbl = f"FAN {i}"
+                        if os.path.isfile(lbl_f):
+                            try:
+                                with open(lbl_f) as f: lbl = f.read().strip().upper()
+                            except Exception: pass
+                        fans.append({"index": i, "label": lbl, "boost": 0, "rpm": rpm, "max": 4800, "controllable": False})
+                        found_in_chip = True
+                if found_in_chip:
+                    break
+        if not fans:
+            fans.append({"index": 1, "label": "FAN 1", "boost": 0, "rpm": 0, "max": 4800, "controllable": False})
+
+    return b1, b2, r1, r2, fans
 
 def get_power_info():
     ac_online = True
@@ -587,9 +693,23 @@ def decode_key(text):
         return 'REFRESH'
     return None
 
-def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status, max1=4800, max2=4800):
+def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status, max1=4800, max2=4800, fans=None):
     box_width, inner_width, gauge_width, term_rows = get_box_dimensions()
+    aw_hwmon = get_hwmon()
+    vendor, product = get_dmi_info()
+    os_distro = get_os_release()
+    tier_badge = get_verification_tier(vendor, aw_hwmon is not None)
+    cpu_model = get_cpu_model()
+    gpu_label = get_gpu_name()
+
+    if fans is None:
+        fans = [
+            {"index": 1, "label": "FAN 1 (CPU)", "boost": b1, "rpm": r1, "max": max1, "controllable": aw_hwmon is not None},
+            {"index": 2, "label": "FAN 2 (GPU)", "boost": b2, "rpm": r2, "max": max2, "controllable": aw_hwmon is not None},
+        ]
+
     gmode_active = (b1 == 255)
+    has_controllable_fans = any(f.get("controllable", False) for f in fans)
 
     if b1 >= 240:
         mode_label = "ULTRA (100% Boost)"
@@ -609,14 +729,19 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
     elif b1 > 0:
         mode_label = "BATTERY (10% Boost)"
         mode_color = ELECTRIC_PURP
-    else:
+    elif has_controllable_fans:
         mode_label = "PASSIVE (0% Boost)"
         mode_color = ELECTRIC_PURP
+    else:
+        mode_label = f"PROFILE: {profile.upper()}"
+        mode_color = CYAN_BRIGHT
 
     if gmode_active:
         badge = f"\033[1;48;2;255;35;65m\033[38;2;255;255;255m  G-MODE EXTREME  \033[0m"
-    else:
+    elif has_controllable_fans:
         badge = f"\033[48;2;32;42;58m\033[38;2;160;180;210m  ○ HYBRID QUIET  \033[0m"
+    else:
+        badge = f"\033[48;2;25;50;75m\033[38;2;0;235;255m  ● BIOS CONTROL  \033[0m"
 
     pwr_str = f"AC {bat_pct}% [ONLINE]" if ac_online else f"BAT {bat_pct}% [{bat_status.upper()}]"
 
@@ -627,9 +752,6 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
         (0.8, (255, 190, 0)),
         (1.0, (255, 45, 75))
     ]
-    max_ceiling = max(max1, max2)
-    gauge_f1 = render_gauge(r1, max1, gauge_width, fan_stops)
-    gauge_f2 = render_gauge(r2, max2, gauge_width, fan_stops)
 
     t_cpu_col = CRIMSON_RED if cpu_temp >= 82 else (SOLAR_AMBER if cpu_temp >= 68 else NEON_GREEN)
     gauge_cpu = render_gauge(cpu_usage, 100, gauge_width)
@@ -664,9 +786,9 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
     rows.append(top)
 
     # 1. Header Block
-    hdr_left = f"{NEON_GREEN}▲ ALIENWARE COMMAND CENTER v2.5{RESET}"
-    hdr_center = f"{WHITE_BOLD}DELL G15 5530{RESET}"
-    hdr_right = f"{MUTED_GRAY}RHEL 10.2{RESET}"
+    hdr_left = f"{NEON_GREEN}▲ AWCC UNIVERSAL COCKPIT{RESET}"
+    hdr_center = f"{WHITE_BOLD}{vendor.upper()} {product.upper()}{RESET}"
+    hdr_right = f"{MUTED_GRAY}{os_distro} {tier_badge}{RESET}"
     rows.append(make_row(align_three(hdr_left, hdr_center, hdr_right, inner_width), inner_width))
     rows.append(div_double)
 
@@ -687,10 +809,6 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
         rows.append(div_single)
 
     # 3. Cooling Turbines Block
-    cool_left = f"{NEON_GREEN}[ DUAL HIGH-PRESSURE COOLING TURBINES ]{RESET}"
-    cool_right = f"{MUTED_GRAY}MAX CEILING: {max_ceiling:,d} RPM{RESET}"
-    rows.append(make_row(align_split(cool_left, cool_right, inner_width), inner_width))
-
     def boost_pct_str(b):
         if b >= 240: return "100%"
         if b >= 75:  return " 85%"
@@ -700,49 +818,57 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
         if b > 0:    return " 10%"
         return "  0%"
 
-    f1_val = f"{WHITE_BOLD}{r1:4d}RPM{RESET}"
-    f1_mid = f"Boost: {CYAN_BRIGHT}{b1:3d} ({boost_pct_str(b1)}){RESET}"
-    f1_right = f"{MUTED_GRAY}Max: {max1:,d} RPM{RESET}"
-    rows.append(format_telemetry_line(f"{WHITE_BOLD}FAN 1 (CPU){RESET}", gauge_f1, f1_val, f1_mid, f1_right, inner_width, gauge_width))
+    max_ceiling = max([f["max"] for f in fans]) if fans else 4800
+    cool_left = f"{NEON_GREEN}[ COOLING TURBINES & ACTIVE THERMALS ]{RESET}"
+    cool_right = f"{MUTED_GRAY}MAX CEILING: {max_ceiling:,d} RPM{RESET}"
+    rows.append(make_row(align_split(cool_left, cool_right, inner_width), inner_width))
 
-    f2_val = f"{WHITE_BOLD}{r2:4d}RPM{RESET}"
-    f2_mid = f"Boost: {CYAN_BRIGHT}{b2:3d} ({boost_pct_str(b2)}){RESET}"
-    f2_right = f"{MUTED_GRAY}Max: {max2:,d} RPM{RESET}"
-    rows.append(format_telemetry_line(f"{WHITE_BOLD}FAN 2 (GPU){RESET}", gauge_f2, f2_val, f2_mid, f2_right, inner_width, gauge_width))
+    for f_info in fans:
+        f_gauge = render_gauge(f_info["rpm"], f_info["max"], gauge_width, fan_stops)
+        f_val = f"{WHITE_BOLD}{f_info['rpm']:4d}RPM{RESET}"
+        if f_info.get("controllable", False):
+            b = f_info["boost"]
+            f_mid = f"Boost: {CYAN_BRIGHT}{b:3d} ({boost_pct_str(b)}){RESET}"
+        else:
+            f_mid = f"Control: {MUTED_GRAY}FIRMWARE AUTO{RESET}"
+        f_right = f"{MUTED_GRAY}Max: {f_info['max']:,d} RPM{RESET}"
+        rows.append(format_telemetry_line(f"{WHITE_BOLD}{f_info['label']}{RESET}", f_gauge, f_val, f_mid, f_right, inner_width, gauge_width))
     rows.append(div_double)
 
     # 4. Silicon Computation & Thermals Block
     silicon_left = f"{SOLAR_AMBER}[ SILICON COMPUTATION & THERMALS ]{RESET}"
-    silicon_right = f"{MUTED_GRAY}ACPI WMAX: PNP0C14:0b{RESET}"
+    silicon_right = f"{MUTED_GRAY}ACPI Platform Profile Active{RESET}"
     rows.append(make_row(align_split(silicon_left, silicon_right, inner_width), inner_width))
 
     cpu_val = f"{SOLAR_AMBER}{cpu_usage:5.1f}%{RESET}"
     cpu_mid = f"Clock: {WHITE_BOLD}{cpu_mhz:4.0f} MHz{RESET}"
     cpu_right = f"{t_cpu_col}Temp: {cpu_temp:4.1f}°C{RESET}"
-    rows.append(format_telemetry_line(f"{WHITE_BOLD}i7-13650HX CPU{RESET}", gauge_cpu, cpu_val, cpu_mid, cpu_right, inner_width, gauge_width))
+    rows.append(format_telemetry_line(f"{WHITE_BOLD}{cpu_model} CPU{RESET}", gauge_cpu, cpu_val, cpu_mid, cpu_right, inner_width, gauge_width))
 
     gpu_val = f"{NEON_GREEN}{gpu['util']:5.1f}%{RESET}"
     gpu_mid = f"Clock: {WHITE_BOLD}{gpu['clk']:4d} MHz{RESET}"
     gpu_right = f"{t_gpu_col}Temp: {g_temp:4.1f}°C{RESET}"
-    rows.append(format_telemetry_line(f"{WHITE_BOLD}RTX 3050 GPU{RESET}", gauge_gpu, gpu_val, gpu_mid, gpu_right, inner_width, gauge_width))
+    rows.append(format_telemetry_line(f"{WHITE_BOLD}{gpu_label}{RESET}", gauge_gpu, gpu_val, gpu_mid, gpu_right, inner_width, gauge_width))
 
     vram_val = f"{ELECTRIC_PURP}{vram_pct:5.1f}%{RESET}"
     vram_mid = f"Used:  {WHITE_BOLD}{vram_used_gb:4.2f} GB{RESET}"
     vram_right = f"{MUTED_GRAY}Limit: {vram_total_gb:4.2f} GB{RESET}"
-    rows.append(format_telemetry_line(f"{WHITE_BOLD}GDDR6 VRAM 6G{RESET}", gauge_vram, vram_val, vram_mid, vram_right, inner_width, gauge_width))
+    rows.append(format_telemetry_line(f"{WHITE_BOLD}GDDR6 VRAM{RESET}", gauge_vram, vram_val, vram_mid, vram_right, inner_width, gauge_width))
 
     ram_val = f"{CYAN_BRIGHT}{ram_pct:5.1f}%{RESET}"
     ram_mid = f"Used:  {WHITE_BOLD}{mem_used:4.1f} GB{RESET}"
     ram_right = f"{MUTED_GRAY}Total: {mem_total:4.1f} GB{RESET}"
-    rows.append(format_telemetry_line(f"{WHITE_BOLD}SYSTEM DDR5{RESET}", gauge_ram, ram_val, ram_mid, ram_right, inner_width, gauge_width))
+    rows.append(format_telemetry_line(f"{WHITE_BOLD}SYSTEM RAM{RESET}", gauge_ram, ram_val, ram_mid, ram_right, inner_width, gauge_width))
 
     # Calculate remaining vertical budget for full-terminal fit
-    # Mandatory footer components:
-    # [div_double, hotkey_row, div_single, modes_row, actions_row, bot] = 6 rows
     footer_rows = []
     footer_rows.append(div_double)
-    hk_left = f"{ELECTRIC_PURP}HARDWARE HOTKEY:{RESET} {WHITE_BOLD}F9 / Fn+F9{RESET} (Game Shift Toggle)"
-    hk_right = f"{MUTED_GRAY}HARDWARE TURBO{RESET}"
+    if has_controllable_fans:
+        hk_left = f"{ELECTRIC_PURP}HARDWARE HOTKEY:{RESET} {WHITE_BOLD}F9 / Fn+F9{RESET} (Game Shift Toggle)"
+        hk_right = f"{MUTED_GRAY}HARDWARE TURBO{RESET}"
+    else:
+        hk_left = f"{ELECTRIC_PURP}PROFILE HOTKEY:{RESET} {WHITE_BOLD}1-6{RESET} (Platform Thermal Profiles)"
+        hk_right = f"{MUTED_GRAY}ACPI PROFILE{RESET}"
     footer_rows.append(make_row(align_split(hk_left, hk_right, inner_width), inner_width))
     footer_rows.append(div_single)
 
@@ -781,10 +907,16 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
     modes_line = f"{WHITE_BOLD}MODES:{RESET} " + sep.join(mode_spans)
     footer_rows.append(make_row(modes_line, inner_width))
 
-    if inner_width >= 65:
-        acts_line = f"{CYAN_ACCENT}ACTIONS:{RESET} [F9] Game Shift Toggle  •  [1-6] Profiles  •  [Q] Exit Cockpit"
+    if has_controllable_fans:
+        if inner_width >= 65:
+            acts_line = f"{CYAN_ACCENT}ACTIONS:{RESET} [F9] Game Shift Toggle  •  [1-6] Profiles  •  [Q] Exit Cockpit"
+        else:
+            acts_line = f"{CYAN_ACCENT}ACTIONS:{RESET} [F9] GameShift  •  [1-6] Modes  •  [Q] Exit"
     else:
-        acts_line = f"{CYAN_ACCENT}ACTIONS:{RESET} [F9] GameShift  •  [1-6] Modes  •  [Q] Exit"
+        if inner_width >= 65:
+            acts_line = f"{CYAN_ACCENT}ACTIONS:{RESET} [1-6] Platform Profiles  •  [Q] Exit Cockpit (Firmware Fan Control)"
+        else:
+            acts_line = f"{CYAN_ACCENT}ACTIONS:{RESET} [1-6] Profiles  •  [Q] Exit"
     footer_rows.append(make_row(acts_line, inner_width))
     footer_rows.append(bot)
 
@@ -873,7 +1005,7 @@ def run_snapshot():
     max1, max2 = get_fan_max(aw_hwmon)
     _, _, cpu_usage, cpu_mhz, cpu_temp = get_cpu_info(0, 0)
     gpu = get_gpu_info()
-    b1, b2, r1, r2 = get_fans(aw_hwmon)
+    b1, b2, r1, r2, fans = get_fans(aw_hwmon)
 
     profile = "balanced"
     pprof_file = get_platform_profile_path()
@@ -896,7 +1028,7 @@ def run_snapshot():
         pass
 
     ac_online, bat_pct, bat_status = get_power_info()
-    frame = build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status, max1, max2)
+    frame = build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status, max1, max2, fans=fans)
     print(frame)
 
 def run_continuous():
@@ -988,7 +1120,7 @@ def run_continuous():
             max1, max2 = get_fan_max(aw_hwmon)
             prev_total, prev_idle, cpu_usage, cpu_mhz, cpu_temp = get_cpu_info(prev_total, prev_idle)
             gpu = get_gpu_info()
-            b1, b2, r1, r2 = get_fans(aw_hwmon)
+            b1, b2, r1, r2, fans = get_fans(aw_hwmon)
 
             profile = "balanced"
             pprof_file = get_platform_profile_path()
@@ -1012,7 +1144,7 @@ def run_continuous():
 
             ac_online, bat_pct, bat_status = get_power_info()
 
-            frame = build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status, max1, max2)
+            frame = build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status, max1, max2, fans=fans)
 
             # Move cursor to home (1,1) and draw frame without flickering
             sys.stdout.write("\033[H" + frame)
@@ -1022,6 +1154,11 @@ def run_continuous():
         cleanup()
 
 if __name__ == "__main__":
+    if "--sysfs-root" in sys.argv:
+        idx = sys.argv.index("--sysfs-root")
+        if idx + 1 < len(sys.argv):
+            SYSFS_ROOT = sys.argv[idx + 1]
+
     if "--snapshot" in sys.argv or "-s" in sys.argv:
         run_snapshot()
     else:

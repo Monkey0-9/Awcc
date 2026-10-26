@@ -1,13 +1,15 @@
 # Maintainer: AWCC Linux Team <support@awcc-linux.org>
-pkgname=awcc-linux-dkms
-pkgver=0.1.0
+pkgname=awcc-linux
+pkgver=0.3.0
 pkgrel=1
-pkgdesc="AWCC Fan Control and Platform Profile Management for Dell Laptops (DKMS)"
+pkgdesc="Universal Linux Hardware Performance, Fan Control & Telemetry Suite"
 arch=('x86_64')
-url="https://github.com/awcc-linux/awcc-linux"
-license=('GPL2' 'MIT')
-depends=('dkms' 'systemd')
-makedepends=('cargo' 'rust' 'linux-headers')
+url="https://github.com/Monkey0-9/Awcc"
+license=('GPL-2.0-or-later' 'MIT')
+depends=('systemd' 'python' 'python-gobject' 'gtk4' 'libadwaita' 'libnotify')
+optdepends=('dkms: kernel module compilation for Dell Alienware laptops'
+            'linux-headers: kernel module build headers')
+makedepends=('cargo' 'rust')
 source=("$pkgname-$pkgver.tar.gz")
 sha256sums=('SKIP')
 
@@ -16,12 +18,30 @@ build() {
 }
 
 package() {
+    # Binaries
     install -Dm755 target/release/awccctl "$pkgdir/usr/bin/awccctl"
     install -Dm755 target/release/awccd "$pkgdir/usr/bin/awccd"
-    install -Dm755 bin/rhel-performance "$pkgdir/usr/bin/rhel-performance"
-    install -Dm755 bin/rhel-balanced "$pkgdir/usr/bin/rhel-balanced"
+    install -Dm755 bin/awcc-gui "$pkgdir/usr/bin/awcc-gui"
+    install -Dm755 bin/awcc-lux-dashboard.py "$pkgdir/usr/bin/awcc-lux-dashboard.py"
+    install -Dm755 bin/awcc-mode "$pkgdir/usr/bin/awcc-mode"
+    install -Dm755 bin/awcc-gameshift-toggle.sh "$pkgdir/usr/bin/awcc-gameshift-toggle"
+    ln -sf awcc-gameshift-toggle "$pkgdir/usr/bin/gmode"
+
+    # Shell profile shortcuts
+    for m in battery quiet balance mid high ultra; do
+        if [ -f "bin/awcc-${m}" ]; then
+            install -Dm755 "bin/awcc-${m}" "$pkgdir/usr/bin/awcc-${m}"
+        fi
+    done
+
+    # Desktop Entry & Icon
+    install -Dm644 packaging/awcc-gui.desktop "$pkgdir/usr/share/applications/awcc-gui.desktop"
+    install -Dm644 packaging/icons/awcc-gui.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/awcc-gui.svg"
+
+    # Systemd Service
     install -Dm644 systemd/awccd.service "$pkgdir/usr/lib/systemd/system/awccd.service"
 
-    mkdir -p "$pkgdir/usr/src/alienware-wmi-1.0.0"
-    cp -r kernel/* "$pkgdir/usr/src/alienware-wmi-1.0.0/"
+    # Kernel module source for DKMS
+    mkdir -p "$pkgdir/usr/src/alienware-wmi-$pkgver"
+    cp -r kernel/* "$pkgdir/usr/src/alienware-wmi-$pkgver/"
 }

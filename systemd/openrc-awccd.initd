@@ -1,0 +1,22 @@
+#!/sbin/openrc-run
+# OpenRC service script for awccd (Universal Linux Hardware Thermal Governor)
+
+name="awccd"
+description="Universal Linux Hardware Performance & Thermal Control Daemon"
+command="/usr/bin/awccd"
+command_background="yes"
+pidfile="/run/awccd.pid"
+output_log="/var/log/awccd.log"
+error_log="/var/log/awccd.err"
+
+depend() {
+    need localmount
+    after modules
+}
+
+stop_post() {
+    # Revert fans to firmware control upon daemon termination
+    if [ -x /usr/bin/awccctl ]; then
+        /usr/bin/awccctl fan release >/dev/null 2>&1 || true
+    fi
+}

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+      <stop offset="0%" stop-color="#001428" />
+      <stop offset="100%" stop-color="#000810" />
+    </radialGradient>
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00ebff" />
+      <stop offset="100%" stop-color="#00ffaa" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff2d4b" />
+      <stop offset="100%" stop-color="#ff9000" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="256" height="256" rx="56" fill="url(#bgGlow)" stroke="#00ebff" stroke-width="4" stroke-opacity="0.4"/>
+
+  <!-- Outer Track -->
+  <circle cx="128" cy="128" r="92" stroke="#143048" stroke-width="8" stroke-dasharray="8 6"/>
+
+  <!-- Glowing Turbine Arc -->
+  <circle cx="128" cy="128" r="92" stroke="url(#cyanGrad)" stroke-width="8" stroke-dasharray="140 400" stroke-linecap="round"/>
+
+  <!-- Turbine Blades -->
+  <g transform="translate(128, 128)">
+    <path d="M0,0 L-18,-70 C-5,-78 20,-68 18,-40 Z" fill="url(#cyanGrad)" opacity="0.85"/>
+    <path d="M0,0 L70,-18 C78,-5 68,20 40,18 Z" fill="url(#cyanGrad)" opacity="0.85"/>
+    <path d="M0,0 L18,70 C5,78 -20,68 -18,40 Z" fill="url(#cyanGrad)" opacity="0.85"/>
+    <path d="M0,0 L-70,18 C-78,5 -68,-20 -40,-18 Z" fill="url(#cyanGrad)" opacity="0.85"/>
+    
+    <!-- Central Hub -->
+    <circle cx="0" cy="0" r="28" fill="#000d1a" stroke="url(#cyanGrad)" stroke-width="4"/>
+    <polygon points="0,-14 12,10 -12,10" fill="url(#accentGrad)"/>
+  </g>
+
+  <!-- Speed Indicator Accent -->
+  <circle cx="128" cy="128" r="108" stroke="#ff2d4b" stroke-width="3" stroke-dasharray="25 500" stroke-linecap="round"/>
+</svg>
