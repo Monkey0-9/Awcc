@@ -36,27 +36,27 @@ if [[ -z "${MODE}" ]] || [[ "${MODE}" =~ ^- ]] || [[ "${MODE,,}" == "monitor" ]]
 fi
 
 case "${MODE,,}" in
-    battery|powersave|low|15|10|26)
+    battery|powersave|low|10|15|26)
         PROFILE="quiet"
-        BOOST=15
-        TITLE="BATTERY SAVER (Silent Whisper, Boost 15, ~1,250 RPM)"
+        BOOST=10
+        TITLE="BATTERY SAVER (Silent Whisper, Boost 10, ~1,000 RPM)"
         ;;
-    quiet|silent|35|20|51)
+    quiet|silent|20|35|51)
         PROFILE="quiet"
-        BOOST=35
-        TITLE="QUIET (Acoustic Silence, Boost 35, ~1,650 RPM)"
+        BOOST=20
+        TITLE="QUIET (Acoustic Silence, Boost 20, ~1,450 RPM)"
         ;;
-    balance|balanced|50|40|102)
+    balance|balanced|40|50|102)
         PROFILE="balanced"
-        BOOST=50
-        TITLE="BALANCE (Daily Productivity, Boost 50, ~2,460 RPM)"
+        BOOST=40
+        TITLE="BALANCE (Daily Productivity, Boost 40, ~1,980 RPM)"
         ;;
     mid|65|60|153)
         PROFILE="performance"
         BOOST=65
-        TITLE="MID (Intermediate Performance, Boost 65, ~3,400 RPM)"
+        TITLE="MID (Intermediate Performance, Boost 65, ~3,100 RPM)"
         ;;
-    high|performance|85|80|204)
+    high|performance|85|80|90|204)
         PROFILE="performance"
         BOOST=85
         TITLE="HIGH PERFORMANCE (Sustained Workloads, Boost 85, ~4,200 RPM)"

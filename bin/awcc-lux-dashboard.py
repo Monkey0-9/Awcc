@@ -269,14 +269,34 @@ def get_power_info():
     return ac_online, bat_pct, bat_status
 
 def apply_mode(mode_name):
-    script = "/home/unknownuser/Awcc/bin/awcc-mode.sh"
-    if os.path.isfile(script):
-        subprocess.run([script, mode_name, "--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(this_dir, "awcc-mode.sh"),
+        os.path.join(this_dir, "awcc-mode"),
+        os.path.expanduser("~/.local/bin/awcc-mode"),
+        "/usr/local/bin/awcc-mode",
+        "/usr/bin/awcc-mode"
+    ]
+    for c in candidates:
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            subprocess.run([c, mode_name, "--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+    subprocess.run(["awcc-mode", mode_name, "--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def toggle_gameshift():
-    script = "/home/unknownuser/.local/bin/awcc-gameshift-toggle"
-    if os.path.isfile(script):
-        subprocess.run([script, "--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(this_dir, "awcc-gameshift-toggle.sh"),
+        os.path.join(this_dir, "awcc-gameshift-toggle"),
+        os.path.expanduser("~/.local/bin/awcc-gameshift-toggle"),
+        "/usr/local/bin/awcc-gameshift-toggle",
+        "/usr/bin/awcc-gameshift-toggle"
+    ]
+    for c in candidates:
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            subprocess.run([c, "--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+    subprocess.run(["awcc-gameshift-toggle", "--quiet"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status):
     box_width, inner_width, gauge_width = get_box_dimensions()
@@ -286,19 +306,22 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
         mode_label = "ULTRA (100% Boost)"
         mode_color = CRIMSON_RED
     elif b1 >= 75:
-        mode_label = "HIGH (80% Boost)"
+        mode_label = "HIGH (85% Boost)"
         mode_color = BLAZE_ORANGE
-    elif b1 >= 55:
-        mode_label = "MID (60% Boost)"
+    elif b1 >= 50:
+        mode_label = "MID (65% Boost)"
         mode_color = SOLAR_AMBER
-    elif b1 >= 40:
+    elif b1 >= 30:
         mode_label = "BALANCE (40% Boost)"
         mode_color = CYAN_BRIGHT
-    elif b1 >= 20:
+    elif b1 >= 15:
         mode_label = "QUIET (20% Boost)"
         mode_color = NEON_GREEN
-    else:
+    elif b1 > 0:
         mode_label = "BATTERY (10% Boost)"
+        mode_color = ELECTRIC_PURP
+    else:
+        mode_label = "PASSIVE (0% Boost)"
         mode_color = ELECTRIC_PURP
 
     if gmode_active:
@@ -373,11 +396,12 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
 
     def boost_pct_str(b):
         if b >= 240: return "100%"
-        if b >= 75:  return " 80%"
-        if b >= 55:  return " 60%"
-        if b >= 40:  return " 40%"
-        if b >= 20:  return " 20%"
-        return " 10%"
+        if b >= 75:  return " 85%"
+        if b >= 50:  return " 65%"
+        if b >= 30:  return " 40%"
+        if b >= 15:  return " 20%"
+        if b > 0:    return " 10%"
+        return "  0%"
 
     f1_val = f"{WHITE_BOLD}{r1:4d}RPM{RESET}"
     f1_mid = f"Boost: {CYAN_BRIGHT}{b1:3d} ({boost_pct_str(b1)}){RESET}"

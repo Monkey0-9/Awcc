@@ -55,7 +55,7 @@ if [[ "$IS_GMODE_ACTIVE" -eq 1 ]]; then
     "$AWCC_MODE_CMD" balance --quiet
     ( notify-send -u normal -t 3000 -i preferences-system-power \
         "❄ ALIENWARE GAME SHIFT: OFF" \
-        "BALANCED MODE RESTORED\nFans: 40% Boost (~2,600 RPM)\nProfile: Balanced System" 2>/dev/null || true ) &
+        "BALANCED MODE RESTORED\nFans: 40% Boost (~1,980 RPM)\nProfile: Balanced System" 2>/dev/null || true ) &
     ( canberra-gtk-play -i service-logout 2>/dev/null || true ) &
     if [[ "$IS_TTY" -eq 1 ]]; then
         exec "$AWCC_MODE_CMD" balance
