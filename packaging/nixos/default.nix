@@ -36,6 +36,7 @@ rustPlatform.buildRustPackage rec {
     install -Dm755 bin/awcc-gui $out/bin/awcc-gui
     install -Dm755 bin/awcc-lux-dashboard.py $out/bin/awcc-lux-dashboard.py
     install -Dm755 bin/awcc-mode $out/bin/awcc-mode
+    install -Dm755 bin/awcc-track $out/bin/awcc-track
     install -Dm755 bin/awcc-gameshift-toggle.sh $out/bin/awcc-gameshift-toggle
     ln -s awcc-gameshift-toggle $out/bin/gmode
 

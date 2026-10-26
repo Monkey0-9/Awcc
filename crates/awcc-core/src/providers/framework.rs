@@ -5,33 +5,32 @@ use crate::telemetry::SystemTelemetry;
 use std::fs;
 use std::path::Path;
 
-pub struct FrameworkSystem76Provider {
+pub struct FrameworkProvider {
     generic: GenericLinuxProvider,
 }
 
-impl Default for FrameworkSystem76Provider {
+impl Default for FrameworkProvider {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl FrameworkSystem76Provider {
+impl FrameworkProvider {
     pub fn new() -> Self {
         Self {
             generic: GenericLinuxProvider::new(),
         }
     }
 
-    fn find_cros_or_system76(sysfs: &Path) -> bool {
+    fn find_cros_ec(sysfs: &Path) -> bool {
         sysfs.join("sys/devices/platform/cros-ec-dev").exists()
-            || sysfs.join("sys/devices/platform/system76_acpi").exists()
-            || sysfs.join("sys/bus/platform/drivers/system76").exists()
+            || sysfs.join("sys/class/chromeos/cros_ec").exists()
     }
 }
 
-impl HardwareProvider for FrameworkSystem76Provider {
+impl HardwareProvider for FrameworkProvider {
     fn name(&self) -> &'static str {
-        "framework_system76"
+        "framework_cros_ec"
     }
 
     fn vendor(&self) -> HardwareVendor {
@@ -48,15 +47,10 @@ impl HardwareProvider for FrameworkSystem76Provider {
                 priority: 85,
                 description: "Framework Laptop (cros_ec / platform-profile)".to_string(),
             })
-        } else if vendor_str.contains("system76") {
-            Some(ProviderMatch {
-                priority: 85,
-                description: "System76 Laptop (system76_acpi / power-daemon)".to_string(),
-            })
-        } else if Self::find_cros_or_system76(sysfs) {
+        } else if Self::find_cros_ec(sysfs) {
             Some(ProviderMatch {
                 priority: 75,
-                description: "ChromeOS EC / System76 platform active".to_string(),
+                description: "ChromeOS EC platform active".to_string(),
             })
         } else {
             None
@@ -65,14 +59,7 @@ impl HardwareProvider for FrameworkSystem76Provider {
 
     fn capabilities(&self, sysfs: &Path) -> HardwareCapabilities {
         let mut caps = self.generic.capabilities(sysfs);
-        let vendor_str = fs::read_to_string(sysfs.join("sys/devices/virtual/dmi/id/sys_vendor"))
-            .unwrap_or_default()
-            .to_lowercase();
-        if vendor_str.contains("system76") {
-            caps.vendor = HardwareVendor::System76;
-        } else {
-            caps.vendor = HardwareVendor::Framework;
-        }
+        caps.vendor = HardwareVendor::Framework;
         caps.verification_tier = VerificationTier::Tier2CommunitySupported;
         caps.tier = VerificationTier::Tier2CommunitySupported;
         caps.active_provider_name = self.name().to_string();

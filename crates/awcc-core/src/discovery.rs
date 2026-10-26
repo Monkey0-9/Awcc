@@ -8,6 +8,8 @@ use crate::telemetry::{
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
+use std::time::Instant;
 
 pub struct HardwareManager {
     sysfs_root: PathBuf,
@@ -16,6 +18,10 @@ pub struct HardwareManager {
     coretemp_hwmon: Option<PathBuf>,
     dell_ddv_hwmon: Option<PathBuf>,
     registry: ProviderRegistry,
+    #[allow(dead_code)]
+    prev_cpu_stat: Mutex<Option<(f64, f64)>>,
+    #[allow(dead_code)]
+    prev_rapl_stat: Mutex<Option<(u64, Instant)>>,
 }
 
 impl Default for HardwareManager {
@@ -39,6 +45,8 @@ impl HardwareManager {
             coretemp_hwmon,
             dell_ddv_hwmon,
             registry: ProviderRegistry::new(),
+            prev_cpu_stat: Mutex::new(None),
+            prev_rapl_stat: Mutex::new(None),
         }
     }
 
@@ -595,47 +603,103 @@ impl HardwareManager {
             .map(|s| s.trim().to_string());
 
         let stat_path = self.sysfs_root.join("proc/stat");
-        let usage_percent = fs::read_to_string(&stat_path)
-            .or_else(|_| fs::read_to_string("/proc/stat"))
-            .ok()
-            .and_then(|s| {
-                let first_line = s.lines().next()?;
-                let parts: Vec<&str> = first_line.split_whitespace().collect();
-                if parts.len() >= 5 && parts[0] == "cpu" {
-                    let user: f64 = parts[1].parse().ok()?;
-                    let nice: f64 = parts[2].parse().ok()?;
-                    let system: f64 = parts[3].parse().ok()?;
-                    let idle: f64 = parts[4].parse().ok()?;
-                    let iowait: f64 = parts.get(5).and_then(|p| p.parse().ok()).unwrap_or(0.0);
-                    let irq: f64 = parts.get(6).and_then(|p| p.parse().ok()).unwrap_or(0.0);
-                    let softirq: f64 = parts.get(7).and_then(|p| p.parse().ok()).unwrap_or(0.0);
-                    let total = user + nice + system + idle + iowait + irq + softirq;
-                    let active = total - (idle + iowait);
-                    if total > 0.0 {
-                        Some(((active / total) * 100.0) as f32)
+        let parse_stat = |s: &str| -> Option<(f64, f64)> {
+            let first_line = s.lines().next()?;
+            let parts: Vec<&str> = first_line.split_whitespace().collect();
+            if parts.len() >= 5 && parts[0] == "cpu" {
+                let user: f64 = parts[1].parse().ok()?;
+                let nice: f64 = parts[2].parse().ok()?;
+                let system: f64 = parts[3].parse().ok()?;
+                let idle: f64 = parts[4].parse().ok()?;
+                let iowait: f64 = parts.get(5).and_then(|p| p.parse().ok()).unwrap_or(0.0);
+                let irq: f64 = parts.get(6).and_then(|p| p.parse().ok()).unwrap_or(0.0);
+                let softirq: f64 = parts.get(7).and_then(|p| p.parse().ok()).unwrap_or(0.0);
+                let total = user + nice + system + idle + iowait + irq + softirq;
+                let idle_all = idle + iowait;
+                Some((total, idle_all))
+            } else {
+                None
+            }
+        };
+
+        let read_stat = || {
+            fs::read_to_string(&stat_path)
+                .or_else(|_| fs::read_to_string("/proc/stat"))
+                .ok()
+                .and_then(|s| parse_stat(&s))
+        };
+
+        let usage_percent = if let Some((cur_total, cur_idle)) = read_stat() {
+            let mut prev_guard = self.prev_cpu_stat.lock().unwrap_or_else(|e| e.into_inner());
+            match *prev_guard {
+                Some((prev_total, prev_idle)) if cur_total > prev_total => {
+                    let diff_total = cur_total - prev_total;
+                    let diff_idle = cur_idle - prev_idle;
+                    let val = ((diff_total - diff_idle) / diff_total) * 100.0;
+                    *prev_guard = Some((cur_total, cur_idle));
+                    Some(val.clamp(0.0, 100.0) as f32)
+                }
+                _ => {
+                    // First reading: sleep 25ms to establish instantaneous baseline
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                    if let Some((next_total, next_idle)) = read_stat() {
+                        let diff_total = next_total - cur_total;
+                        let diff_idle = next_idle - cur_idle;
+                        let val = if diff_total > 0.0 {
+                            ((diff_total - diff_idle) / diff_total) * 100.0
+                        } else {
+                            0.0
+                        };
+                        *prev_guard = Some((next_total, next_idle));
+                        Some(val.clamp(0.0, 100.0) as f32)
                     } else {
+                        *prev_guard = Some((cur_total, cur_idle));
                         None
                     }
-                } else {
-                    None
                 }
-            });
+            }
+        } else {
+            None
+        };
 
         let rapl_energy_path = self
             .sysfs_root
             .join("sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj");
+        let now = Instant::now();
         let package_power_watts = if let Ok(s1) = fs::read_to_string(&rapl_energy_path) {
-            if let Ok(uj1) = s1.trim().parse::<u64>() {
-                std::thread::sleep(std::time::Duration::from_millis(50));
-                if let Ok(s2) = fs::read_to_string(&rapl_energy_path) {
-                    if let Ok(uj2) = s2.trim().parse::<u64>() {
-                        let diff_uj = uj2.saturating_sub(uj1);
-                        Some(diff_uj as f32 / 50_000.0)
-                    } else {
-                        None
+            if let Ok(cur_uj) = s1.trim().parse::<u64>() {
+                let mut prev_guard = self
+                    .prev_rapl_stat
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                match *prev_guard {
+                    Some((prev_uj, prev_time)) if cur_uj >= prev_uj => {
+                        let diff_uj = cur_uj.saturating_sub(prev_uj);
+                        let elapsed = now.duration_since(prev_time).as_secs_f32();
+                        *prev_guard = Some((cur_uj, now));
+                        if elapsed > 0.05 {
+                            Some((diff_uj as f32 / 1_000_000.0) / elapsed)
+                        } else {
+                            None
+                        }
                     }
-                } else {
-                    None
+                    _ => {
+                        // First reading: sleep 25ms to establish instantaneous delta
+                        std::thread::sleep(std::time::Duration::from_millis(25));
+                        if let Ok(s2) = fs::read_to_string(&rapl_energy_path) {
+                            if let Ok(next_uj) = s2.trim().parse::<u64>() {
+                                let diff_uj = next_uj.saturating_sub(cur_uj);
+                                *prev_guard = Some((next_uj, Instant::now()));
+                                Some(diff_uj as f32 / 25_000.0)
+                            } else {
+                                *prev_guard = Some((cur_uj, now));
+                                None
+                            }
+                        } else {
+                            *prev_guard = Some((cur_uj, now));
+                            None
+                        }
+                    }
                 }
             } else {
                 None
@@ -766,9 +830,7 @@ impl HardwareManager {
             .map(|s| s.trim() == "1")
             .unwrap_or(true);
 
-        let bat_cap_path = self
-            .sysfs_root
-            .join("sys/class/power_supply/BAT0/capacity");
+        let bat_cap_path = self.sysfs_root.join("sys/class/power_supply/BAT0/capacity");
         let battery_percent = fs::read_to_string(&bat_cap_path)
             .ok()
             .and_then(|s| s.trim().parse::<f32>().ok());

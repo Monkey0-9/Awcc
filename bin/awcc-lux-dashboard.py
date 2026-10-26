@@ -1318,6 +1318,23 @@ def run_continuous():
         cleanup()
 
 if __name__ == "__main__":
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print("""AWCC Cybernetic Lux Dashboard (TrueColor Hardware Cockpit)
+Usage: awcc-lux-dashboard.py [OPTIONS]
+
+Options:
+  -s, --snapshot         Print single-frame status snapshot and exit
+  --theme <name>         Theme: cryo, cyberpunk, darkcore, solar, matrix, vaporwave
+  --sysfs-root <path>    Override sysfs root directory for testing
+  -h, --help             Show this help message and exit
+
+Interactive Keybindings:
+  [1-6]                  Switch Performance Profiles (1: Battery ... 6: Ultra)
+  [F9]                   Hardware Game Shift Boost (Toggle G-Mode)
+  [C] / [T]              Cycle TrueColor Color Grading Themes
+  [Q]                    Quit dashboard""")
+        sys.exit(0)
+
     if "--sysfs-root" in sys.argv:
         idx = sys.argv.index("--sysfs-root")
         if idx + 1 < len(sys.argv):

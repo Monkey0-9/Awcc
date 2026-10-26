@@ -28,12 +28,25 @@ for candidate in \
     fi
 done
 
-# If JSON streaming is requested, use awccctl
-if [[ "${1:-}" == "--json" ]] || [[ "${2:-}" == "--json" ]]; then
+if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    echo "AWCC Linux: Hardware Performance & Thermal Telemetry Tracker"
+    echo "Usage: awcc-track [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --once               Single-shot telemetry readout"
+    echo "  --json               JSON-formatted real-time telemetry stream"
+    echo "  --cli                Terminal matrix tracking mode (via awccctl)"
+    echo "  --theme <name>       Color grading theme (cryo, cyberpunk, darkcore, solar, matrix, vaporwave)"
+    echo "  -h, --help           Show this help message and exit"
+    exit 0
+fi
+
+# If JSON streaming or CLI mode is requested, use awccctl
+if [[ "${1:-}" == "--json" ]] || [[ "${2:-}" == "--json" ]] || [[ "${1:-}" == "--cli" ]] || [[ "${1:-}" == "--once" ]]; then
     if [[ -n "$AWCCCTL_BIN" ]]; then
         exec "$AWCCCTL_BIN" track "$@"
     else
-        echo "[-] Error: awccctl binary not found for JSON tracking." >&2
+        echo "[-] Error: awccctl binary not found for CLI/JSON tracking." >&2
         exit 1
     fi
 fi

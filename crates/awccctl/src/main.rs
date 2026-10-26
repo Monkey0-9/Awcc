@@ -2,10 +2,14 @@ use awcc_core::capabilities::{FanControlCapability, VerificationTier};
 use awcc_core::HardwareManager;
 use clap::{Parser, Subcommand};
 use colored::*;
+use signal_hook::{consts::TERM_SIGNALS, iterator::Signals};
 use std::fs;
+use std::io::{self, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::thread::sleep;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread::{self, sleep};
 use std::time::Duration;
 
 #[derive(Parser)]
@@ -334,12 +338,14 @@ fn render_status_snapshot(hw: &HardwareManager, json: bool) {
     }
     println!(
         "{}",
-        "--------------------------------------------------------------------------"
-            .dimmed()
+        "--------------------------------------------------------------------------".dimmed()
     );
 
     // 1. Silicon Computation & Load
-    println!("{}", " [ SILICON COMPUTATION & PERFORMANCE ]".bold().yellow());
+    println!(
+        "{}",
+        " [ SILICON COMPUTATION & PERFORMANCE ]".bold().yellow()
+    );
     if let Some(ref cpu) = tele.cpu {
         let usage_str = cpu
             .usage_percent
@@ -425,8 +431,7 @@ fn render_status_snapshot(hw: &HardwareManager, json: bool) {
     // 2. System Memory & Power Delivery
     println!(
         "{}",
-        "--------------------------------------------------------------------------"
-            .dimmed()
+        "--------------------------------------------------------------------------".dimmed()
     );
     println!("{}", " [ SYSTEM MEMORY & POWER DELIVERY ]".bold().cyan());
     if let Some(ref mem) = tele.memory {
@@ -467,8 +472,7 @@ fn render_status_snapshot(hw: &HardwareManager, json: bool) {
     // 3. Thermal Sensor Matrix
     println!(
         "{}",
-        "--------------------------------------------------------------------------"
-            .dimmed()
+        "--------------------------------------------------------------------------".dimmed()
     );
     println!("{}", " [ THERMAL SENSOR MATRIX ]".bold().green());
     let fmt_temp = |opt: Option<f32>| -> colored::ColoredString {
@@ -490,18 +494,17 @@ fn render_status_snapshot(hw: &HardwareManager, json: bool) {
         fmt_temp(tele.thermals.cpu_core_max_temp),
         fmt_temp(tele.thermals.ambient_temp)
     );
-    println!(
-        "  GPU Temperature:    {}",
-        fmt_temp(tele.thermals.gpu_temp)
-    );
+    println!("  GPU Temperature:    {}", fmt_temp(tele.thermals.gpu_temp));
 
     // 4. Fans & Tachometers
     println!(
         "{}",
-        "--------------------------------------------------------------------------"
-            .dimmed()
+        "--------------------------------------------------------------------------".dimmed()
     );
-    println!("{}", " [ DUAL HIGH-PRESSURE COOLING TURBINES ]".bold().blue());
+    println!(
+        "{}",
+        " [ DUAL HIGH-PRESSURE COOLING TURBINES ]".bold().blue()
+    );
     if tele.fans.is_empty() {
         println!(
             "  Fan Control: {}",
@@ -565,23 +568,51 @@ fn render_status_snapshot(hw: &HardwareManager, json: bool) {
     );
 }
 
+fn run_live_watch_loop(hw: &HardwareManager, json: bool, interval: f64) {
+    let interval_dur = Duration::from_secs_f64(interval.max(0.2));
+    let term = Arc::new(AtomicBool::new(false));
+    let mut signals = Signals::new(TERM_SIGNALS).expect("Failed to register signal handlers");
+
+    let term_clone = Arc::clone(&term);
+    thread::spawn(move || {
+        if signals.forever().next().is_some() {
+            term_clone.store(true, Ordering::SeqCst);
+        }
+    });
+
+    if !json {
+        // Hide cursor and clear screen once initially
+        print!("\x1b[?25l\x1b[2J\x1b[H");
+        io::stdout().flush().ok();
+    }
+
+    while !term.load(Ordering::SeqCst) {
+        if json {
+            let tele = hw.get_telemetry();
+            println!("{}", serde_json::to_string(&tele).unwrap());
+            io::stdout().flush().ok();
+        } else {
+            print!("\x1b[H");
+            render_status_snapshot(hw, false);
+            print!("\x1b[J");
+            io::stdout().flush().ok();
+        }
+        sleep(interval_dur);
+    }
+
+    if !json {
+        // Restore cursor and clear formatting on clean exit
+        println!("\x1b[?25h\x1b[0m");
+        io::stdout().flush().ok();
+    }
+}
+
 fn cmd_status(hw: &HardwareManager, json: bool, watch: bool, interval: f64) {
     if !watch {
         render_status_snapshot(hw, json);
         return;
     }
-
-    let interval_dur = Duration::from_secs_f64(interval.max(0.2));
-    loop {
-        if json {
-            let tele = hw.get_telemetry();
-            println!("{}", serde_json::to_string(&tele).unwrap());
-        } else {
-            print!("\x1b[H\x1b[2J");
-            render_status_snapshot(hw, false);
-        }
-        sleep(interval_dur);
-    }
+    run_live_watch_loop(hw, json, interval);
 }
 
 fn cmd_track(hw: &HardwareManager, json: bool, interval: f64, once: bool) {
@@ -589,18 +620,7 @@ fn cmd_track(hw: &HardwareManager, json: bool, interval: f64, once: bool) {
         render_status_snapshot(hw, json);
         return;
     }
-
-    let interval_dur = Duration::from_secs_f64(interval.max(0.2));
-    loop {
-        if json {
-            let tele = hw.get_telemetry();
-            println!("{}", serde_json::to_string(&tele).unwrap());
-        } else {
-            print!("\x1b[H\x1b[2J");
-            render_status_snapshot(hw, false);
-        }
-        sleep(interval_dur);
-    }
+    run_live_watch_loop(hw, json, interval);
 }
 
 fn cmd_profile(hw: &HardwareManager, profile: &str) {

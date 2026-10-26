@@ -9,10 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BIN="${REPO_DIR}/target/debug/awccctl"
 
-if [[ ! -x "$BIN" ]]; then
-    echo "[*] Building awccctl binary..."
-    cargo build --bin awccctl --manifest-path "${REPO_DIR}/Cargo.toml"
-fi
+echo "[*] Ensuring awccctl debug binary is up-to-date..."
+cargo build --bin awccctl --manifest-path "${REPO_DIR}/Cargo.toml" --quiet
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "${TMP_ROOT}"' EXIT
@@ -97,12 +95,108 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# Test 3: Generic Desktop PC Mock Sysfs
+# Test 3: Acer Predator Mock Sysfs
+# ------------------------------------------------------------------------------
+ACER_DIR="${TMP_ROOT}/acer"
+mkdir -p "${ACER_DIR}/sys/devices/virtual/dmi/id"
+echo "Acer" > "${ACER_DIR}/sys/devices/virtual/dmi/id/sys_vendor"
+echo "Predator Helios 16" > "${ACER_DIR}/sys/devices/virtual/dmi/id/product_name"
+echo "10" > "${ACER_DIR}/sys/devices/virtual/dmi/id/chassis_type"
+mkdir -p "${ACER_DIR}/sys/devices/platform/acer-wmi"
+echo "0" > "${ACER_DIR}/sys/devices/platform/acer-wmi/turbo_mode"
+
+OUTPUT=$("$BIN" --sysfs-root "${ACER_DIR}" detect)
+if echo "$OUTPUT" | grep -q "Acer" && echo "$OUTPUT" | grep -q "acer_wmi"; then
+    assert_test "Acer Mock: detect reports Acer vendor and acer_wmi provider" 0
+else
+    assert_test "Acer Mock: detect reports Acer vendor and acer_wmi provider" 1
+fi
+
+"$BIN" --sysfs-root "${ACER_DIR}" fan max >/dev/null 2>&1 || true
+if grep -q "1" "${ACER_DIR}/sys/devices/platform/acer-wmi/turbo_mode"; then
+    assert_test "Acer Mock: fan max sets turbo_mode = 1" 0
+else
+    assert_test "Acer Mock: fan max sets turbo_mode = 1" 1
+fi
+
+"$BIN" --sysfs-root "${ACER_DIR}" fan release >/dev/null 2>&1 || true
+if grep -q "0" "${ACER_DIR}/sys/devices/platform/acer-wmi/turbo_mode"; then
+    assert_test "Acer Mock: fan release restores turbo_mode = 0" 0
+else
+    assert_test "Acer Mock: fan release restores turbo_mode = 0" 1
+fi
+
+# ------------------------------------------------------------------------------
+# Test 4: MSI Gaming Katana Mock Sysfs
+# ------------------------------------------------------------------------------
+MSI_DIR="${TMP_ROOT}/msi"
+mkdir -p "${MSI_DIR}/sys/devices/virtual/dmi/id"
+echo "Micro-Star International Co., Ltd." > "${MSI_DIR}/sys/devices/virtual/dmi/id/sys_vendor"
+echo "Katana 15 B13VGK" > "${MSI_DIR}/sys/devices/virtual/dmi/id/product_name"
+echo "10" > "${MSI_DIR}/sys/devices/virtual/dmi/id/chassis_type"
+mkdir -p "${MSI_DIR}/sys/devices/platform/msi-ec"
+echo "0" > "${MSI_DIR}/sys/devices/platform/msi-ec/cooler_boost"
+
+OUTPUT=$("$BIN" --sysfs-root "${MSI_DIR}" detect)
+if echo "$OUTPUT" | grep -q "Micro-Star" && echo "$OUTPUT" | grep -q "msi_ec"; then
+    assert_test "MSI Mock: detect reports MSI vendor and msi_ec provider" 0
+else
+    assert_test "MSI Mock: detect reports MSI vendor and msi_ec provider" 1
+fi
+
+"$BIN" --sysfs-root "${MSI_DIR}" fan max >/dev/null 2>&1 || true
+if grep -q "1" "${MSI_DIR}/sys/devices/platform/msi-ec/cooler_boost"; then
+    assert_test "MSI Mock: fan max sets cooler_boost = 1" 0
+else
+    assert_test "MSI Mock: fan max sets cooler_boost = 1" 1
+fi
+
+"$BIN" --sysfs-root "${MSI_DIR}" fan release >/dev/null 2>&1 || true
+if grep -q "0" "${MSI_DIR}/sys/devices/platform/msi-ec/cooler_boost"; then
+    assert_test "MSI Mock: fan release restores cooler_boost = 0" 0
+else
+    assert_test "MSI Mock: fan release restores cooler_boost = 0" 1
+fi
+
+# ------------------------------------------------------------------------------
+# Test 5: System76 Oryx Pro Mock Sysfs
+# ------------------------------------------------------------------------------
+SYS76_DIR="${TMP_ROOT}/sys76"
+mkdir -p "${SYS76_DIR}/sys/devices/virtual/dmi/id"
+echo "System76" > "${SYS76_DIR}/sys/devices/virtual/dmi/id/sys_vendor"
+echo "Oryx Pro" > "${SYS76_DIR}/sys/devices/virtual/dmi/id/product_name"
+echo "10" > "${SYS76_DIR}/sys/devices/virtual/dmi/id/chassis_type"
+mkdir -p "${SYS76_DIR}/sys/devices/platform/system76_acpi"
+echo "auto" > "${SYS76_DIR}/sys/devices/platform/system76_acpi/fan_mode"
+
+OUTPUT=$("$BIN" --sysfs-root "${SYS76_DIR}" detect)
+if echo "$OUTPUT" | grep -q "System76" && echo "$OUTPUT" | grep -q "system76_acpi"; then
+    assert_test "System76 Mock: detect reports System76 vendor and system76_acpi provider" 0
+else
+    assert_test "System76 Mock: detect reports System76 vendor and system76_acpi provider" 1
+fi
+
+"$BIN" --sysfs-root "${SYS76_DIR}" fan max >/dev/null 2>&1 || true
+if grep -q "full" "${SYS76_DIR}/sys/devices/platform/system76_acpi/fan_mode"; then
+    assert_test "System76 Mock: fan max sets fan_mode = full" 0
+else
+    assert_test "System76 Mock: fan max sets fan_mode = full" 1
+fi
+
+"$BIN" --sysfs-root "${SYS76_DIR}" fan release >/dev/null 2>&1 || true
+if grep -q "auto" "${SYS76_DIR}/sys/devices/platform/system76_acpi/fan_mode"; then
+    assert_test "System76 Mock: fan release restores fan_mode = auto" 0
+else
+    assert_test "System76 Mock: fan release restores fan_mode = auto" 1
+fi
+
+# ------------------------------------------------------------------------------
+# Test 6: Generic Custom Desktop PC Mock Sysfs
 # ------------------------------------------------------------------------------
 GEN_DIR="${TMP_ROOT}/generic"
 mkdir -p "${GEN_DIR}/sys/devices/virtual/dmi/id"
-echo "Micro-Star International Co., Ltd." > "${GEN_DIR}/sys/devices/virtual/dmi/id/sys_vendor"
-echo "MS-7D91" > "${GEN_DIR}/sys/devices/virtual/dmi/id/product_name"
+echo "Custom Desktop PC" > "${GEN_DIR}/sys/devices/virtual/dmi/id/sys_vendor"
+echo "Z790 Motherboard" > "${GEN_DIR}/sys/devices/virtual/dmi/id/product_name"
 echo "3" > "${GEN_DIR}/sys/devices/virtual/dmi/id/chassis_type"
 mkdir -p "${GEN_DIR}/sys/class/hwmon/hwmon0"
 echo "nct6775" > "${GEN_DIR}/sys/class/hwmon/hwmon0/name"
@@ -118,7 +212,7 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# Test 4: Unsupported PC Graceful Degradation
+# Test 7: Unsupported PC Graceful Degradation
 # ------------------------------------------------------------------------------
 UNSUP_DIR="${TMP_ROOT}/unsupported"
 mkdir -p "${UNSUP_DIR}/sys/devices/virtual/dmi/id"

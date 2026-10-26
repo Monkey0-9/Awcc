@@ -14,8 +14,15 @@ override_dh_auto_install:
 	install -m 0755 bin/awcc-gui debian/awcc-linux/usr/bin/awcc-gui
 	install -m 0755 bin/awcc-lux-dashboard.py debian/awcc-linux/usr/bin/awcc-lux-dashboard.py
 	install -m 0755 bin/awcc-mode debian/awcc-linux/usr/bin/awcc-mode
+	install -m 0755 bin/awcc-track debian/awcc-linux/usr/bin/awcc-track
 	install -m 0755 bin/awcc-gameshift-toggle.sh debian/awcc-linux/usr/bin/awcc-gameshift-toggle
 	ln -sf awcc-gameshift-toggle debian/awcc-linux/usr/bin/gmode
+
+	for m in battery quiet balance mid high ultra; do \
+		if [ -f "bin/awcc-$$m" ]; then \
+			install -m 0755 "bin/awcc-$$m" "debian/awcc-linux/usr/bin/awcc-$$m"; \
+		fi \
+	done
 
 	install -d debian/awcc-linux/usr/share/applications
 	install -m 0644 packaging/awcc-gui.desktop debian/awcc-linux/usr/share/applications/awcc-gui.desktop

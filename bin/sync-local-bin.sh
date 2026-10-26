@@ -18,17 +18,28 @@ cp -f "${ROOT_DIR}/target/release/awccctl" "${LOCAL_BIN}/awccctl"
 cp -f "${ROOT_DIR}/target/release/awccd" "${LOCAL_BIN}/awccd"
 chmod +x "${LOCAL_BIN}/awccctl" "${LOCAL_BIN}/awccd"
 
-# 3. Sync dashboard & mode scripts
-echo "[3/4] Installing dashboard and mode actuation scripts..."
+# 3. Sync dashboard, GUI, & mode scripts
+echo "[3/4] Installing dashboard, GUI, and mode actuation scripts..."
 cp -f "${ROOT_DIR}/bin/awcc-lux-dashboard.py" "${LOCAL_BIN}/awcc-lux-dashboard.py"
+cp -f "${ROOT_DIR}/bin/awcc-gui" "${LOCAL_BIN}/awcc-gui"
 cp -f "${ROOT_DIR}/bin/awcc-mode" "${LOCAL_BIN}/awcc-mode"
 cp -f "${ROOT_DIR}/bin/awcc-mode.sh" "${LOCAL_BIN}/awcc-mode.sh"
 cp -f "${ROOT_DIR}/bin/awcc-track" "${LOCAL_BIN}/awcc-track"
 chmod +x \
     "${LOCAL_BIN}/awcc-lux-dashboard.py" \
+    "${LOCAL_BIN}/awcc-gui" \
     "${LOCAL_BIN}/awcc-mode" \
     "${LOCAL_BIN}/awcc-mode.sh" \
     "${LOCAL_BIN}/awcc-track"
+
+# Install desktop icon and entry
+mkdir -p "${HOME}/.local/share/applications" "${HOME}/.local/share/icons/hicolor/scalable/apps"
+if [[ -f "${ROOT_DIR}/packaging/awcc-gui.desktop" ]]; then
+    cp -f "${ROOT_DIR}/packaging/awcc-gui.desktop" "${HOME}/.local/share/applications/awcc-gui.desktop"
+fi
+if [[ -f "${ROOT_DIR}/packaging/icons/awcc-gui.svg" ]]; then
+    cp -f "${ROOT_DIR}/packaging/icons/awcc-gui.svg" "${HOME}/.local/share/icons/hicolor/scalable/apps/awcc-gui.svg"
+fi
 
 # 4. Sync profile actuation shortcuts
 echo "[4/4] Synchronizing mode shortcuts (awcc-quiet, awcc-balance, etc.)..."

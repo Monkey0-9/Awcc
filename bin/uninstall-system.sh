@@ -57,6 +57,7 @@ BINS=(
     awcc-lux-dashboard.py
     awcc-mode
     awcc-mode.sh
+    awcc-track
     awcc-gameshift-toggle
     doctor-recovery
     gmode

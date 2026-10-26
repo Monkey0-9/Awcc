@@ -112,6 +112,7 @@ BIN_MAP=(
     "bin/awcc-ultra:/usr/local/bin/awcc-ultra"
     "bin/awcc-mode:/usr/local/bin/awcc-mode"
     "bin/awcc-mode.sh:/usr/local/bin/awcc-mode.sh"
+    "bin/awcc-track:/usr/local/bin/awcc-track"
     "bin/awcc-gameshift-toggle.sh:/usr/local/bin/awcc-gameshift-toggle"
     "bin/awcc-lux-dashboard.py:/usr/local/bin/awcc-lux-dashboard.py"
     "bin/awcc-gui:/usr/local/bin/awcc-gui"

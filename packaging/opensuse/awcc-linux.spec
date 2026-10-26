@@ -24,8 +24,8 @@ Requires:       libnotify-tools
 %description
 Universal Linux hardware performance, fan control, platform profile management,
 and telemetry monitoring suite supporting Dell Alienware, ASUS, Lenovo, HP,
-Framework, System76, and standard Linux desktop motherboards. Includes CLI,
-responsive terminal dashboard, and modern GTK4/Libadwaita GUI.
+Acer, MSI, Framework, System76, and standard Linux desktop motherboards. Includes CLI,
+responsive terminal dashboard with TrueColor color grading, and modern GTK4 GUI.
 
 %prep
 %setup -q
@@ -43,6 +43,7 @@ install -m 0755 bin/awcc-lux-dashboard.py %{buildroot}%{_bindir}/awcc-lux-dashbo
 
 # Shell helpers & symlinks
 install -m 0755 bin/awcc-mode %{buildroot}%{_bindir}/awcc-mode
+install -m 0755 bin/awcc-track %{buildroot}%{_bindir}/awcc-track
 install -m 0755 bin/awcc-gameshift-toggle.sh %{buildroot}%{_bindir}/awcc-gameshift-toggle
 ln -sf %{_bindir}/awcc-gameshift-toggle %{buildroot}%{_bindir}/gmode
 

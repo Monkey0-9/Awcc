@@ -37,13 +37,18 @@ except ImportError as e:
     sys.exit(1)
 
 def find_awccctl_bin():
-    # Prefer local workspace build if present
-    repo_bin = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "target", "debug", "awccctl")
-    if os.path.isfile(repo_bin) and os.access(repo_bin, os.X_OK):
-        return repo_bin
+    # 1. Prefer release build in workspace
     repo_rel = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "target", "release", "awccctl")
     if os.path.isfile(repo_rel) and os.access(repo_rel, os.X_OK):
         return repo_rel
+    # 2. Check local user bin
+    user_bin = os.path.expanduser("~/.local/bin/awccctl")
+    if os.path.isfile(user_bin) and os.access(user_bin, os.X_OK):
+        return user_bin
+    # 3. Check debug build
+    repo_bin = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "target", "debug", "awccctl")
+    if os.path.isfile(repo_bin) and os.access(repo_bin, os.X_OK):
+        return repo_bin
     system_bin = "/usr/bin/awccctl"
     if os.path.isfile(system_bin) and os.access(system_bin, os.X_OK):
         return system_bin
@@ -362,23 +367,50 @@ class AwccApp(Adw.Application):
 
     def update_telemetry_ui(self):
         thermals = self.telemetry.get("thermals", {})
+        cpu_info = self.telemetry.get("cpu") or {}
+        gpu_info = self.telemetry.get("gpu") or {}
+
         # CPU
         cpu_t = thermals.get("cpu_pkg_temp")
+        cpu_sub = []
         if cpu_t is not None:
-            self.cpu_row.set_subtitle(f"{cpu_t:.1f}°C")
+            cpu_sub.append(f"{cpu_t:.1f}°C")
             self.cpu_bar.set_fraction(min(1.0, max(0.0, (cpu_t - 30.0) / 70.0)))
         else:
-            self.cpu_row.set_subtitle("Unavailable")
             self.cpu_bar.set_fraction(0.0)
+
+        usage = cpu_info.get("usage_percent")
+        if usage is not None:
+            cpu_sub.append(f"{usage:.1f}% Load")
+        freq = cpu_info.get("cur_freq_mhz")
+        if freq is not None:
+            cpu_sub.append(f"{freq:.0f} MHz")
+        pwr = cpu_info.get("package_power_watts")
+        if pwr is not None:
+            cpu_sub.append(f"{pwr:.1f}W")
+
+        self.cpu_row.set_subtitle(" • ".join(cpu_sub) if cpu_sub else "Unavailable")
 
         # GPU
         gpu_t = thermals.get("gpu_temp")
+        gpu_sub = []
         if gpu_t is not None:
-            self.gpu_row.set_subtitle(f"{gpu_t:.1f}°C")
+            gpu_sub.append(f"{gpu_t:.1f}°C")
             self.gpu_bar.set_fraction(min(1.0, max(0.0, (gpu_t - 30.0) / 70.0)))
         else:
-            self.gpu_row.set_subtitle("Unavailable (Idle/D3)")
             self.gpu_bar.set_fraction(0.0)
+
+        g_util = gpu_info.get("utilization_gpu_percent")
+        if g_util is not None:
+            gpu_sub.append(f"{g_util}% Load")
+        g_clk = gpu_info.get("core_clock_mhz")
+        if g_clk is not None:
+            gpu_sub.append(f"{g_clk} MHz")
+        g_pwr = gpu_info.get("power_draw_watts")
+        if g_pwr is not None:
+            gpu_sub.append(f"{g_pwr:.1f}W")
+
+        self.gpu_row.set_subtitle(" • ".join(gpu_sub) if gpu_sub else "Unavailable (Idle/D3)")
 
         # VRM & Ambient
         vrm = thermals.get("vrm_temp")

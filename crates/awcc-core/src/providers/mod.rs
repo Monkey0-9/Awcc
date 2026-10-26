@@ -1,9 +1,12 @@
+pub mod acer;
 pub mod asus;
 pub mod dell;
 pub mod framework;
 pub mod generic;
 pub mod hp;
 pub mod lenovo;
+pub mod msi;
+pub mod system76;
 
 use crate::capabilities::{HardwareCapabilities, HardwareVendor};
 use crate::error::AwccError;
@@ -48,7 +51,10 @@ impl ProviderRegistry {
         reg.register(Box::new(asus::AsusProvider::new()));
         reg.register(Box::new(lenovo::LenovoProvider::new()));
         reg.register(Box::new(hp::HpProvider::new()));
-        reg.register(Box::new(framework::FrameworkSystem76Provider::new()));
+        reg.register(Box::new(acer::AcerProvider::new()));
+        reg.register(Box::new(msi::MsiProvider::new()));
+        reg.register(Box::new(framework::FrameworkProvider::new()));
+        reg.register(Box::new(system76::System76Provider::new()));
         // Register universal generic fallback last
         reg.register(Box::new(generic::GenericLinuxProvider::new()));
         reg

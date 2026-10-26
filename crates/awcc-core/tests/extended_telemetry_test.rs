@@ -11,7 +11,11 @@ fn test_extended_telemetry_serialization() {
         dmi_product: "Dell G15 5530".to_string(),
         bios_version: "1.18.0".to_string(),
         active_platform_profile: "quiet".to_string(),
-        platform_profile_choices: vec!["quiet".to_string(), "balanced".to_string(), "performance".to_string()],
+        platform_profile_choices: vec![
+            "quiet".to_string(),
+            "balanced".to_string(),
+            "performance".to_string(),
+        ],
         platform_profile_provider: Some("alienware-wmi".to_string()),
         gmode_status: GModeStatus::Inactive,
         hwmon_alienware_path: Some("/sys/class/hwmon/hwmon4".to_string()),
@@ -24,18 +28,16 @@ fn test_extended_telemetry_serialization() {
             ambient_temp: Some(36.0),
             sensors: vec![],
         },
-        fans: vec![
-            FanTelemetry {
-                fan_index: 1,
-                label: "CPU Fan".to_string(),
-                requested_boost: 20,
-                readback_boost: Some(20),
-                current_rpm: Some(1450),
-                reported_min_rpm: Some(0),
-                reported_max_rpm: Some(4800),
-                provider: "alienware_wmi".to_string(),
-            },
-        ],
+        fans: vec![FanTelemetry {
+            fan_index: 1,
+            label: "CPU Fan".to_string(),
+            requested_boost: 20,
+            readback_boost: Some(20),
+            current_rpm: Some(1450),
+            reported_min_rpm: Some(0),
+            reported_max_rpm: Some(4800),
+            provider: "alienware_wmi".to_string(),
+        }],
         cpu: Some(CpuComputeTelemetry {
             model_name: "i7-13650HX".to_string(),
             cores_logical: 20,
@@ -77,7 +79,8 @@ fn test_extended_telemetry_serialization() {
     assert!(json.contains("ram_used_percent"));
     assert!(json.contains("ac_online"));
 
-    let deserialized: SystemTelemetry = serde_json::from_str(&json).expect("Must deserialize from JSON");
+    let deserialized: SystemTelemetry =
+        serde_json::from_str(&json).expect("Must deserialize from JSON");
     assert_eq!(deserialized.dmi_product, "Dell G15 5530");
     assert_eq!(deserialized.cpu.unwrap().model_name, "i7-13650HX");
     assert_eq!(deserialized.gpu.unwrap().core_clock_mhz, Some(1732));

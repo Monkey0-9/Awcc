@@ -114,7 +114,10 @@ impl HardwareProvider for AsusProvider {
         let throttle_policy =
             sysfs.join("sys/devices/platform/asus-nb-wmi/throttle_thermal_policy");
         if throttle_policy.exists() {
-            let _ = fs::write(&throttle_policy, "1");
+            return fs::write(&throttle_policy, "1\n").map_err(|e| AwccError::Io {
+                path: throttle_policy.display().to_string(),
+                source: e,
+            });
         }
         self.generic.set_max_fans(sysfs)
     }
@@ -123,7 +126,10 @@ impl HardwareProvider for AsusProvider {
         let throttle_policy =
             sysfs.join("sys/devices/platform/asus-nb-wmi/throttle_thermal_policy");
         if throttle_policy.exists() {
-            let _ = fs::write(&throttle_policy, "0");
+            return fs::write(&throttle_policy, "0\n").map_err(|e| AwccError::Io {
+                path: throttle_policy.display().to_string(),
+                source: e,
+            });
         }
         self.generic.release_fans(sysfs)
     }
