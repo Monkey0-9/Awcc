@@ -718,6 +718,26 @@ def get_memory_breakdown():
 def get_auxiliary_thermals():
     aux = {}
     p = find_hwmon_by_name("dell_ddv")
+    if not p:
+        p = find_hwmon_by_name("dell_smm")
+        if p:
+            smm_map = {
+                "temp2_input": "VRM",
+                "temp3_input": "Ambient",
+                "temp5_input": "SODIMM",
+                "temp6_input": "SODIMM 2",
+                "temp7_input": "Charger",
+            }
+            for t, lbl in smm_map.items():
+                t_path = os.path.join(p, t)
+                if os.path.isfile(t_path):
+                    try:
+                        with open(t_path, "r") as f:
+                            aux[lbl] = float(f.read().strip()) / 1000.0
+                    except Exception:
+                        pass
+            return aux
+
     if p:
         for t in os.listdir(p):
             if t.startswith("temp") and t.endswith("_input"):
@@ -1002,14 +1022,25 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
         f_right = f"{MUTED_GRAY}Max: {f_info['max']:,d} RPM{RESET}"
         rows.append(format_telemetry_line(f"{WHITE_BOLD}{f_info['label']}{RESET}", f_gauge, f_val, f_mid, f_right, inner_width, gauge_width))
 
-    # Prominently show Motherboard VRM & Ambient sensor readings in Cooling block
+    # Prominently show Motherboard VRM, Ambient, SODIMM & Charger readings
     aux_temps = get_auxiliary_thermals()
     vrm_val = aux_temps.get("VRM")
     amb_val = aux_temps.get("Ambient")
-    if vrm_val or amb_val:
-        vrm_str = f"VRM: {temp_color(vrm_val or 0)}{vrm_val:.1f}°C{RESET}" if vrm_val else "VRM: N/A"
-        amb_str = f"Ambient: {temp_color(amb_val or 0)}{amb_val:.1f}°C{RESET}" if amb_val else "Ambient: N/A"
-        matrix_line = f"{MUTED_GRAY}THERMALS:{RESET} {vrm_str}  {MUTED_GRAY}•{RESET}  {amb_str}"
+    sod_val = aux_temps.get("SODIMM")
+    sod2_val = aux_temps.get("SODIMM 2")
+    chg_val = aux_temps.get("Charger")
+
+    parts = []
+    if vrm_val: parts.append(f"VRM: {temp_color(vrm_val)}{vrm_val:.1f}°C{RESET}")
+    if amb_val: parts.append(f"Air: {temp_color(amb_val)}{amb_val:.1f}°C{RESET}")
+    if sod_val:
+        if sod2_val:
+            parts.append(f"RAM: {temp_color(sod_val)}{sod_val:.0f}°C/{sod2_val:.0f}°C{RESET}")
+        else:
+            parts.append(f"RAM: {temp_color(sod_val)}{sod_val:.1f}°C{RESET}")
+    if chg_val: parts.append(f"Charger: {temp_color(chg_val)}{chg_val:.1f}°C{RESET}")
+    if parts:
+        matrix_line = f" {MUTED_GRAY}•{RESET} ".join(parts)
         rows.append(make_row(align_split(f"{theme.accent}├─ SENSORS{RESET}", matrix_line, inner_width), inner_width, theme))
 
     rows.append(div_double)
@@ -1037,7 +1068,13 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
     rows.append(format_telemetry_line(f"{WHITE_BOLD}GDDR6 VRAM{RESET}", gauge_vram, vram_val, vram_mid, vram_right, inner_width, gauge_width))
 
     ram_val = f"{theme.accent_bright}{ram_pct:5.1f}%{RESET}"
-    ram_mid = f"Used:  {WHITE_BOLD}{mem_used:4.1f} GB{RESET}"
+    if sod_val:
+        if sod2_val:
+            ram_mid = f"Used:  {WHITE_BOLD}{mem_used:4.1f} GB{RESET} • {temp_color(sod_val)}{sod_val:.0f}°C{RESET}"
+        else:
+            ram_mid = f"Used:  {WHITE_BOLD}{mem_used:4.1f} GB{RESET} • {temp_color(sod_val)}{sod_val:.0f}°C{RESET}"
+    else:
+        ram_mid = f"Used:  {WHITE_BOLD}{mem_used:4.1f} GB{RESET}"
     ram_right = f"{MUTED_GRAY}Total: {mem_total:4.1f} GB{RESET}"
     rows.append(format_telemetry_line(f"{WHITE_BOLD}SYSTEM RAM{RESET}", gauge_ram, ram_val, ram_mid, ram_right, inner_width, gauge_width))
 

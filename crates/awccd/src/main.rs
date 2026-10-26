@@ -94,7 +94,7 @@ fn main() {
                 if current_profile == "custom" {
                     let target_boost = governor.compute_boost(temp);
                     for fan in &fans {
-                        if let Err(e) = hw.write_fan_boost(fan.fan_index, target_boost) {
+                        if let Err(e) = hw.set_fan_level(fan.fan_index, target_boost) {
                             eprintln!(
                                 "[-] Error: Failed to actuate boost on fan {}: {}",
                                 fan.fan_index, e
@@ -117,15 +117,9 @@ fn main() {
         thread::sleep(Duration::from_secs(1));
     }
 
-    println!("[*] Fail-safe shutdown: Releasing fan boost to 0 before exit...");
-    let fans = hw.discover_fans();
-    for fan in &fans {
-        if let Err(e) = hw.write_fan_boost(fan.fan_index, 0) {
-            eprintln!(
-                "[-] Warning: Failed to release fan {}: {}",
-                fan.fan_index, e
-            );
-        }
+    println!("[*] Fail-safe shutdown: Releasing fans before exit...");
+    if let Err(e) = hw.release_fans() {
+        eprintln!("[-] Warning: Failed to release fans: {}", e);
     }
     println!("[+] Fail-safe daemon shutdown complete.");
 }

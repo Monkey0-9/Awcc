@@ -26,6 +26,9 @@ fn test_extended_telemetry_serialization() {
             gpu_temp: Some(48.0),
             vrm_temp: Some(54.0),
             ambient_temp: Some(36.0),
+            ram_temp: Some(38.0),
+            ram_dimm2_temp: Some(36.0),
+            charger_temp: Some(40.0),
             sensors: vec![],
         },
         fans: vec![FanTelemetry {

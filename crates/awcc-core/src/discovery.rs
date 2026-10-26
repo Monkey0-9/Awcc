@@ -237,6 +237,9 @@ impl HardwareManager {
         let mut cpu_core_max_temp = None;
         let mut vrm_temp = None;
         let mut ambient_temp = None;
+        let mut ram_temp = None;
+        let mut ram_dimm2_temp = None;
+        let mut charger_temp = None;
         let mut sensors = Vec::new();
 
         // 1. Ingest from coretemp
@@ -280,23 +283,77 @@ impl HardwareManager {
             }
         }
 
-        // 2. Ingest from dell_ddv
+        // 2. Ingest from dell_ddv (Alienware & Dell Data Vault)
+        let mut gpu_temp_fallback = None;
         if let Some(ref ddv) = self.dell_ddv_hwmon {
-            for (idx, target) in [(1, &mut vrm_temp), (2, &mut ambient_temp)] {
+            for idx in 1..=10 {
+                let input_path = ddv.join(format!("temp{}_input", idx));
+                if !input_path.exists() {
+                    continue;
+                }
                 let label_path = ddv.join(format!("temp{}_label", idx));
                 let label = fs::read_to_string(&label_path)
                     .map(|s| s.trim().to_string())
-                    .unwrap_or_else(|_| if idx == 1 { "VRM" } else { "Ambient" }.to_string());
+                    .unwrap_or_else(|_| format!("Thermal Sensor {}", idx));
 
-                if let Ok(content) = fs::read_to_string(ddv.join(format!("temp{}_input", idx))) {
+                if let Ok(content) = fs::read_to_string(&input_path) {
                     if let Ok(val) = content.trim().parse::<f32>() {
                         let c = val / 1000.0;
-                        *target = Some(c);
                         sensors.push(ThermalSensor {
-                            label,
+                            label: label.clone(),
                             temp_c: Some(c),
                             source: "dell_ddv".to_string(),
                         });
+
+                        let lower = label.to_lowercase();
+                        if lower.contains("sodimm 2") || lower.contains("dimm 2") {
+                            ram_dimm2_temp = Some(c);
+                        } else if lower.contains("sodimm")
+                            || lower.contains("dimm")
+                            || lower.contains("ram")
+                        {
+                            ram_temp = Some(c);
+                        } else if lower.contains("charger") {
+                            charger_temp = Some(c);
+                        } else if lower.contains("video") || lower.contains("gpu") {
+                            gpu_temp_fallback = Some(c);
+                        } else if lower.contains("cpu") {
+                            if cpu_pkg_temp.is_none() {
+                                cpu_pkg_temp = Some(c);
+                            }
+                        } else if idx == 2 {
+                            vrm_temp = Some(c);
+                        } else if idx == 3 {
+                            ambient_temp = Some(c);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2b. Fallback to dell_smm for SODIMM, VRM, and Ambient
+        if ram_temp.is_none() || vrm_temp.is_none() {
+            if let Some(ref smm) = self.dell_smm_hwmon {
+                for (idx, target, default_label) in [
+                    (2, &mut vrm_temp, "Motherboard VRM"),
+                    (3, &mut ambient_temp, "Ambient Air"),
+                    (5, &mut ram_temp, "SODIMM 1"),
+                    (6, &mut ram_dimm2_temp, "SODIMM 2"),
+                    (7, &mut charger_temp, "Charger VRM"),
+                ] {
+                    let input_path = smm.join(format!("temp{}_input", idx));
+                    if input_path.exists() && target.is_none() {
+                        if let Ok(content) = fs::read_to_string(&input_path) {
+                            if let Ok(val) = content.trim().parse::<f32>() {
+                                let c = val / 1000.0;
+                                *target = Some(c);
+                                sensors.push(ThermalSensor {
+                                    label: default_label.to_string(),
+                                    temp_c: Some(c),
+                                    source: "dell_smm".to_string(),
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -322,6 +379,9 @@ impl HardwareManager {
                             if cpu_pkg_temp.is_none() && label.eq_ignore_ascii_case("CPU") {
                                 cpu_pkg_temp = Some(c);
                             }
+                            if gpu_temp_fallback.is_none() && label.eq_ignore_ascii_case("GPU") {
+                                gpu_temp_fallback = Some(c);
+                            }
                         }
                     }
                 }
@@ -341,7 +401,8 @@ impl HardwareManager {
                 s.lines()
                     .next()
                     .and_then(|line| line.trim().parse::<f32>().ok())
-            });
+            })
+            .or(gpu_temp_fallback);
 
         if let Some(gt) = gpu_temp {
             sensors.push(ThermalSensor {
@@ -357,6 +418,9 @@ impl HardwareManager {
             gpu_temp,
             vrm_temp,
             ambient_temp,
+            ram_temp,
+            ram_dimm2_temp,
+            charger_temp,
             sensors,
         }
     }

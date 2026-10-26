@@ -25,12 +25,15 @@ cp -f "${ROOT_DIR}/bin/awcc-gui" "${LOCAL_BIN}/awcc-gui"
 cp -f "${ROOT_DIR}/bin/awcc-mode" "${LOCAL_BIN}/awcc-mode"
 cp -f "${ROOT_DIR}/bin/awcc-mode.sh" "${LOCAL_BIN}/awcc-mode.sh"
 cp -f "${ROOT_DIR}/bin/awcc-track" "${LOCAL_BIN}/awcc-track"
+cp -f "${ROOT_DIR}/bin/awcc-gameshift-toggle.sh" "${LOCAL_BIN}/awcc-gameshift-toggle"
+ln -sf "${LOCAL_BIN}/awcc-gameshift-toggle" "${LOCAL_BIN}/gmode"
 chmod +x \
     "${LOCAL_BIN}/awcc-lux-dashboard.py" \
     "${LOCAL_BIN}/awcc-gui" \
     "${LOCAL_BIN}/awcc-mode" \
     "${LOCAL_BIN}/awcc-mode.sh" \
-    "${LOCAL_BIN}/awcc-track"
+    "${LOCAL_BIN}/awcc-track" \
+    "${LOCAL_BIN}/awcc-gameshift-toggle"
 
 # Install desktop icon and entry
 mkdir -p "${HOME}/.local/share/applications" "${HOME}/.local/share/icons/hicolor/scalable/apps"

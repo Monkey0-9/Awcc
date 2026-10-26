@@ -36,6 +36,9 @@ pub struct ThermalTelemetry {
     pub gpu_temp: Option<f32>,
     pub vrm_temp: Option<f32>,
     pub ambient_temp: Option<f32>,
+    pub ram_temp: Option<f32>,
+    pub ram_dimm2_temp: Option<f32>,
+    pub charger_temp: Option<f32>,
     pub sensors: Vec<ThermalSensor>,
 }
 

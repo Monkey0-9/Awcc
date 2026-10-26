@@ -320,8 +320,36 @@ class AwccApp(Adw.Application):
         self.ambient_row = Adw.ActionRow(title="Ambient Air Temp", subtitle="Not Exposed")
         thermal_group.add(self.ambient_row)
 
+        self.sodimm_row = Adw.ActionRow(title="Memory SODIMM Temp", subtitle="Not Exposed")
+        thermal_group.add(self.sodimm_row)
+
+        self.charger_row = Adw.ActionRow(title="Power Charger VRM Temp", subtitle="Not Exposed")
+        thermal_group.add(self.charger_row)
+
         # -------------------------------------------------------------
-        # 4. Diagnostics & Security Health Group
+        # 4. System Memory & Power Delivery Group
+        # -------------------------------------------------------------
+        mem_group = Adw.PreferencesGroup(
+            title="System Memory &amp; Power Delivery",
+            description="Live RAM capacity, Swap space, AC status, and battery telemetry."
+        )
+        pref_page.add(mem_group)
+
+        self.ram_row = Adw.ActionRow(title="System RAM", subtitle="Loading...")
+        self.ram_bar = Gtk.ProgressBar()
+        self.ram_bar.set_size_request(160, -1)
+        self.ram_bar.set_valign(Gtk.Align.CENTER)
+        self.ram_row.add_suffix(self.ram_bar)
+        mem_group.add(self.ram_row)
+
+        self.swap_row = Adw.ActionRow(title="Swap Memory", subtitle="Loading...")
+        mem_group.add(self.swap_row)
+
+        self.power_row = Adw.ActionRow(title="Power Delivery &amp; Battery", subtitle="Loading...")
+        mem_group.add(self.power_row)
+
+        # -------------------------------------------------------------
+        # 5. Diagnostics & Security Health Group
         # -------------------------------------------------------------
         diag_group = Adw.PreferencesGroup(
             title="Hardware &amp; Diagnostic Health",
@@ -344,8 +372,8 @@ class AwccApp(Adw.Application):
 
         self.update_telemetry_ui()
 
-        # Hook periodic refresh timer
-        GLib.timeout_add_seconds(2, self.on_timer_tick)
+        # Hook periodic refresh timer (1s interval for responsive live tracking)
+        GLib.timeout_add_seconds(1, self.on_timer_tick)
 
         self.win.present()
 
@@ -418,6 +446,50 @@ class AwccApp(Adw.Application):
 
         amb = thermals.get("ambient_temp")
         self.ambient_row.set_subtitle(f"{amb:.1f}°C" if amb is not None else "Not Exposed")
+
+        sodimm = thermals.get("ram_temp")
+        sodimm2 = thermals.get("ram_dimm2_temp")
+        if sodimm is not None:
+            sub = f"{sodimm:.1f}°C"
+            if sodimm2 is not None:
+                sub += f" (DIMM 2: {sodimm2:.1f}°C)"
+            self.sodimm_row.set_subtitle(sub)
+        else:
+            self.sodimm_row.set_subtitle("Not Exposed")
+
+        charger = thermals.get("charger_temp")
+        self.charger_row.set_subtitle(f"{charger:.1f}°C" if charger is not None else "Not Exposed")
+
+        # Memory & Power
+        mem = self.telemetry.get("memory") or {}
+        ram_used = mem.get("ram_used_mb", 0)
+        ram_total = mem.get("ram_total_mb", 0)
+        ram_pct = mem.get("ram_used_percent", 0.0)
+        if ram_total > 0:
+            self.ram_row.set_subtitle(f"{ram_used:,} MB / {ram_total:,} MB ({ram_pct:.1f}%)")
+            self.ram_bar.set_fraction(min(1.0, max(0.0, ram_pct / 100.0)))
+        else:
+            self.ram_row.set_subtitle("Unavailable")
+            self.ram_bar.set_fraction(0.0)
+
+        swap_used = mem.get("swap_used_mb", 0)
+        swap_total = mem.get("swap_total_mb", 0)
+        if swap_total > 0:
+            swap_pct = (swap_used / swap_total) * 100.0
+            self.swap_row.set_subtitle(f"{swap_used:,} MB / {swap_total:,} MB ({swap_pct:.1f}%)")
+        else:
+            self.swap_row.set_subtitle("0 MB / 0 MB (No Swap)")
+
+        pwr = self.telemetry.get("power") or {}
+        ac_str = "AC Online" if pwr.get("ac_online", True) else "AC Disconnected"
+        bat_pct = pwr.get("battery_percent")
+        bat_stat = pwr.get("battery_status") or "Unknown"
+        rate = pwr.get("charge_rate_watts")
+        rate_str = f" ({rate:+.1f}W)" if rate is not None else ""
+        if bat_pct is not None:
+            self.power_row.set_subtitle(f"{ac_str} • Battery: {bat_pct:.0f}% [{bat_stat}{rate_str}]")
+        else:
+            self.power_row.set_subtitle(f"{ac_str} • Desktop PC (No Battery)")
 
         # Fans
         fans = self.telemetry.get("fans", [])

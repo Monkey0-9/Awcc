@@ -440,11 +440,17 @@ fn render_status_snapshot(hw: &HardwareManager, json: bool) {
     );
     println!("{}", " [ SYSTEM MEMORY & POWER DELIVERY ]".bold().cyan());
     if let Some(ref mem) = tele.memory {
+        let ram_temp_str = match (tele.thermals.ram_temp, tele.thermals.ram_dimm2_temp) {
+            (Some(t1), Some(t2)) => format!(" • {:.0}°C/{:.0}°C", t1, t2),
+            (Some(t1), None) => format!(" • {:.0}°C", t1),
+            _ => String::new(),
+        };
         println!(
-            "  RAM:  {:>5} / {:>5} MB ({:5.1}%) | Swap: {:>5} / {:>5} MB",
+            "  RAM:  {:>5} / {:>5} MB ({:5.1}%{}) | Swap: {:>5} / {:>5} MB",
             mem.ram_used_mb,
             mem.ram_total_mb,
             mem.ram_used_percent,
+            ram_temp_str,
             mem.swap_used_mb,
             mem.swap_total_mb
         );
@@ -500,6 +506,26 @@ fn render_status_snapshot(hw: &HardwareManager, json: bool) {
         fmt_temp(tele.thermals.ambient_temp)
     );
     println!("  GPU Temperature:    {}", fmt_temp(tele.thermals.gpu_temp));
+
+    if tele.thermals.ram_dimm2_temp.is_some() {
+        println!(
+            "  RAM SODIMM 1 Temp:  {}    RAM SODIMM 2 Temp:  {}",
+            fmt_temp(tele.thermals.ram_temp),
+            fmt_temp(tele.thermals.ram_dimm2_temp)
+        );
+        if tele.thermals.charger_temp.is_some() {
+            println!(
+                "  Power Charger VRM:  {}",
+                fmt_temp(tele.thermals.charger_temp)
+            );
+        }
+    } else if tele.thermals.ram_temp.is_some() || tele.thermals.charger_temp.is_some() {
+        println!(
+            "  Memory SODIMM:      {}    Power Charger VRM:  {}",
+            fmt_temp(tele.thermals.ram_temp),
+            fmt_temp(tele.thermals.charger_temp)
+        );
+    }
 
     // 4. Fans & Tachometers
     println!(
