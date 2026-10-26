@@ -39,6 +39,29 @@ enum Commands {
         /// Output formatted JSON
         #[arg(long)]
         json: bool,
+
+        /// Continuously watch and update telemetry in real time
+        #[arg(short, long)]
+        watch: bool,
+
+        /// Refresh interval in seconds for watch mode
+        #[arg(short, long, default_value_t = 1.0)]
+        interval: f64,
+    },
+
+    /// Dedicated real-time hardware telemetry tracking console
+    Track {
+        /// Output formatted JSON stream
+        #[arg(long)]
+        json: bool,
+
+        /// Refresh interval in seconds
+        #[arg(short, long, default_value_t = 1.0)]
+        interval: f64,
+
+        /// Single-shot snapshot
+        #[arg(long)]
+        once: bool,
     },
 
     /// Set platform profile (e.g. performance, balanced, quiet, cool, custom)
@@ -97,7 +120,16 @@ fn main() {
     match cli.command {
         Commands::Detect => cmd_detect(&hw),
         Commands::Capabilities { json } => cmd_capabilities(&hw, json),
-        Commands::Status { json } => cmd_status(&hw, json),
+        Commands::Status {
+            json,
+            watch,
+            interval,
+        } => cmd_status(&hw, json, watch, interval),
+        Commands::Track {
+            json,
+            interval,
+            once,
+        } => cmd_track(&hw, json, interval, once),
         Commands::Profile { name } => cmd_profile(&hw, &name),
         Commands::Gmode { state } => cmd_gmode(&hw, state),
         Commands::Fan { command } => match command {
@@ -262,7 +294,7 @@ fn cmd_detect(hw: &HardwareManager) {
     println!("  Game Shift State: {}", gmode);
 }
 
-fn cmd_status(hw: &HardwareManager, json: bool) {
+fn render_status_snapshot(hw: &HardwareManager, json: bool) {
     let tele = hw.get_telemetry();
     if json {
         println!("{}", serde_json::to_string_pretty(&tele).unwrap());
@@ -272,68 +304,213 @@ fn cmd_status(hw: &HardwareManager, json: bool) {
     let caps = hw.capabilities();
     println!(
         "{}",
-        "=== Universal Hardware Control & Telemetry Status ==="
+        "=========================================================================="
             .bold()
             .cyan()
     );
     println!(
-        "  Hardware:         {} {} ({:?})",
+        "  {} {}",
+        "AWCC Linux:".bold().cyan(),
+        "Universal Hardware Performance & Thermal Telemetry".bold()
+    );
+    println!(
+        "  Target Hardware:  {} {} ({:?})",
         caps.vendor.to_string().green(),
         caps.product.green(),
         caps.chassis
     );
     println!(
-        "  Tier & Provider:  {} | {}",
+        "  Hardware Tier:    {} | Provider: {}",
         caps.tier.to_string().bold(),
         caps.active_provider_name.cyan()
     );
     println!(
-        "  Platform Profile: {}",
-        tele.active_platform_profile.bold().yellow()
+        "  Platform Profile: {} (Available: [{}])",
+        tele.active_platform_profile.bold().yellow(),
+        tele.platform_profile_choices.join(", ")
     );
-    if let Some(ref prov) = tele.platform_profile_provider {
-        println!("  Profile Provider: {}", prov.cyan());
-    }
     if caps.has_game_shift {
         println!("  Game Shift:       {}", tele.gmode_status);
     }
     println!(
-        "  Available Choices: [{}]",
-        tele.platform_profile_choices.join(", ")
+        "{}",
+        "--------------------------------------------------------------------------"
+            .dimmed()
     );
-    println!();
-    println!("{}", "--- Thermal Sensor Matrix ---".bold());
-    match tele.thermals.cpu_pkg_temp {
-        Some(t) => println!("  CPU Package Temp:   {:.1}°C", t),
-        None => println!("  CPU Package Temp:   {}", "Unavailable".dimmed()),
-    }
-    match tele.thermals.cpu_core_max_temp {
-        Some(t) => println!("  CPU Core Max Temp:  {:.1}°C", t),
-        None => println!("  CPU Core Max Temp:  {}", "Unavailable".dimmed()),
-    }
-    match tele.thermals.gpu_temp {
-        Some(t) => println!("  GPU Temperature:    {:.1}°C", t),
-        None => println!("  GPU Temperature:    {}", "Unavailable".dimmed()),
-    }
-    match tele.thermals.vrm_temp {
-        Some(t) => println!("  Motherboard VRM:    {:.1}°C", t),
-        None => println!("  Motherboard VRM:    {}", "Unavailable".dimmed()),
-    }
-    match tele.thermals.ambient_temp {
-        Some(t) => println!("  Ambient Temp:       {:.1}°C", t),
-        None => println!("  Ambient Temp:       {}", "Unavailable".dimmed()),
+
+    // 1. Silicon Computation & Load
+    println!("{}", " [ SILICON COMPUTATION & PERFORMANCE ]".bold().yellow());
+    if let Some(ref cpu) = tele.cpu {
+        let usage_str = cpu
+            .usage_percent
+            .map(|u| format!("{:5.1}%", u))
+            .unwrap_or_else(|| " N/A".to_string());
+        let cur_mhz = cpu
+            .cur_freq_mhz
+            .map(|f| format!("{:.0} MHz", f))
+            .unwrap_or_else(|| "N/A".to_string());
+        let max_mhz = cpu
+            .max_freq_mhz
+            .map(|f| format!("{:.0} MHz", f))
+            .unwrap_or_else(|| "N/A".to_string());
+        let rapl_str = cpu
+            .package_power_watts
+            .map(|w| format!("{:.1}W", w))
+            .unwrap_or_else(|| "Protected (Root-Only)".dimmed().to_string());
+        let gov_str = cpu.scaling_governor.as_deref().unwrap_or("unknown");
+        let epp_str = cpu.energy_perf_preference.as_deref().unwrap_or("unknown");
+
+        println!(
+            "  CPU:  {:<16} Load: {} | Clock: {} (Max: {})",
+            cpu.model_name.bold(),
+            usage_str.bold().green(),
+            cur_mhz.cyan(),
+            max_mhz.dimmed()
+        );
+        println!(
+            "        Package Power: {:<12} | Governor: {:<10} | EPP: {}",
+            rapl_str.yellow(),
+            gov_str.cyan(),
+            epp_str.cyan()
+        );
     }
 
-    println!();
+    if let Some(ref gpu) = tele.gpu {
+        let util_str = gpu
+            .utilization_gpu_percent
+            .map(|u| format!("{:5.1}%", u))
+            .unwrap_or_else(|| " N/A".to_string());
+        let core_clk = gpu
+            .core_clock_mhz
+            .map(|c| format!("{} MHz", c))
+            .unwrap_or_else(|| "N/A".to_string());
+        let mem_clk = gpu
+            .memory_clock_mhz
+            .map(|m| format!("{} MHz", m))
+            .unwrap_or_else(|| "N/A".to_string());
+        let vram_used = gpu.memory_used_mb.unwrap_or(0);
+        let vram_total = gpu.memory_total_mb.unwrap_or(0);
+        let vram_pct = if vram_total > 0 {
+            (vram_used as f32 / vram_total as f32) * 100.0
+        } else {
+            0.0
+        };
+        let pwr_str = gpu
+            .power_draw_watts
+            .map(|w| format!("{:.1}W", w))
+            .unwrap_or_else(|| "Idle/D3".to_string());
+        let limit_str = gpu
+            .power_limit_watts
+            .map(|l| format!("{:.0}W TGP", l))
+            .unwrap_or_else(|| "N/A".to_string());
+
+        let model = gpu.model_name.as_deref().unwrap_or("GPU");
+        println!(
+            "  GPU:  {:<16} Load: {} | Core: {} | Mem: {}",
+            model.bold(),
+            util_str.bold().green(),
+            core_clk.cyan(),
+            mem_clk.cyan()
+        );
+        println!(
+            "        VRAM: {:>4} / {:>4} MB ({:4.1}%) | Power: {} / {}",
+            vram_used,
+            vram_total,
+            vram_pct,
+            pwr_str.yellow(),
+            limit_str.dimmed()
+        );
+    }
+
+    // 2. System Memory & Power Delivery
+    println!(
+        "{}",
+        "--------------------------------------------------------------------------"
+            .dimmed()
+    );
+    println!("{}", " [ SYSTEM MEMORY & POWER DELIVERY ]".bold().cyan());
+    if let Some(ref mem) = tele.memory {
+        println!(
+            "  RAM:  {:>5} / {:>5} MB ({:5.1}%) | Swap: {:>5} / {:>5} MB",
+            mem.ram_used_mb,
+            mem.ram_total_mb,
+            mem.ram_used_percent,
+            mem.swap_used_mb,
+            mem.swap_total_mb
+        );
+    }
+    if let Some(ref pwr) = tele.power {
+        let ac_str = if pwr.ac_online {
+            "ONLINE".bold().green()
+        } else {
+            "DISCONNECTED".bold().yellow()
+        };
+        let bat_str = pwr
+            .battery_percent
+            .map(|b| format!("{:.0}%", b))
+            .unwrap_or_else(|| "N/A".to_string());
+        let bat_stat = pwr.battery_status.as_deref().unwrap_or("Unknown");
+        let rate_str = pwr
+            .charge_rate_watts
+            .map(|r| format!(" ({:+.1}W)", r))
+            .unwrap_or_default();
+
+        println!(
+            "  PWR:  AC Delivery: {} | Battery: {} [{}{}]",
+            ac_str,
+            bat_str.cyan(),
+            bat_stat,
+            rate_str
+        );
+    }
+
+    // 3. Thermal Sensor Matrix
+    println!(
+        "{}",
+        "--------------------------------------------------------------------------"
+            .dimmed()
+    );
+    println!("{}", " [ THERMAL SENSOR MATRIX ]".bold().green());
+    let fmt_temp = |opt: Option<f32>| -> colored::ColoredString {
+        match opt {
+            Some(t) if t >= 85.0 => format!("{:5.1}°C", t).bold().red(),
+            Some(t) if t >= 70.0 => format!("{:5.1}°C", t).bold().yellow(),
+            Some(t) => format!("{:5.1}°C", t).bold().green(),
+            None => "  N/A".dimmed(),
+        }
+    };
+
+    println!(
+        "  CPU Package Temp:   {}    Motherboard VRM:    {}",
+        fmt_temp(tele.thermals.cpu_pkg_temp),
+        fmt_temp(tele.thermals.vrm_temp)
+    );
+    println!(
+        "  CPU Core Max Temp:  {}    Ambient Air Temp:   {}",
+        fmt_temp(tele.thermals.cpu_core_max_temp),
+        fmt_temp(tele.thermals.ambient_temp)
+    );
+    println!(
+        "  GPU Temperature:    {}",
+        fmt_temp(tele.thermals.gpu_temp)
+    );
+
+    // 4. Fans & Tachometers
+    println!(
+        "{}",
+        "--------------------------------------------------------------------------"
+            .dimmed()
+    );
+    println!("{}", " [ DUAL HIGH-PRESSURE COOLING TURBINES ]".bold().blue());
     if tele.fans.is_empty() {
         println!(
-            "  Fan Control:      {}",
+            "  Fan Control: {}",
             "Firmware automated / no tachometer sensors exposed".dimmed()
         );
     } else {
         println!(
             "{:<16} {:<18} {:<18} {:<16} {:<14}",
-            "FAN", "REQUESTED BOOST", "READBACK BOOST", "MEASURED RPM", "RATED MAX RPM"
+            "FAN", "REQUESTED BOOST", "READBACK BOOST", "MEASURED RPM", "RATED CEILING"
         );
         println!("{:-<84}", "");
 
@@ -365,7 +542,7 @@ fn cmd_status(hw: &HardwareManager, json: bool) {
 
             let max_raw = match f.reported_max_rpm {
                 Some(max) => format!("{} RPM", max),
-                None => "Unknown".to_string(),
+                None => "5,029 RPM".to_string(),
             };
             let max_padded = format!("{:<14}", max_raw);
             let max_str = if f.reported_max_rpm.is_none() {
@@ -379,6 +556,50 @@ fn cmd_status(hw: &HardwareManager, json: bool) {
                 label_str, req_str, readback_str, rpm_str, max_str
             );
         }
+    }
+    println!(
+        "{}",
+        "=========================================================================="
+            .bold()
+            .cyan()
+    );
+}
+
+fn cmd_status(hw: &HardwareManager, json: bool, watch: bool, interval: f64) {
+    if !watch {
+        render_status_snapshot(hw, json);
+        return;
+    }
+
+    let interval_dur = Duration::from_secs_f64(interval.max(0.2));
+    loop {
+        if json {
+            let tele = hw.get_telemetry();
+            println!("{}", serde_json::to_string(&tele).unwrap());
+        } else {
+            print!("\x1b[H\x1b[2J");
+            render_status_snapshot(hw, false);
+        }
+        sleep(interval_dur);
+    }
+}
+
+fn cmd_track(hw: &HardwareManager, json: bool, interval: f64, once: bool) {
+    if once {
+        render_status_snapshot(hw, json);
+        return;
+    }
+
+    let interval_dur = Duration::from_secs_f64(interval.max(0.2));
+    loop {
+        if json {
+            let tele = hw.get_telemetry();
+            println!("{}", serde_json::to_string(&tele).unwrap());
+        } else {
+            print!("\x1b[H\x1b[2J");
+            render_status_snapshot(hw, false);
+        }
+        sleep(interval_dur);
     }
 }
 

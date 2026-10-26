@@ -274,6 +274,10 @@ impl HardwareProvider for GenericLinuxProvider {
                 sensors,
             },
             fans,
+            cpu: None,
+            gpu: None,
+            memory: None,
+            power: None,
         }
     }
 

@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+ROOT_DIR="$(dirname "${SCRIPT_DIR}")"
+LOCAL_BIN="${HOME}/.local/bin"
+
+echo "=== AWCC Linux: Synchronizing Binaries & Scripts to ${LOCAL_BIN} ==="
+mkdir -p "${LOCAL_BIN}"
+
+# 1. Build release binaries
+echo "[1/4] Compiling optimized release binaries (awccctl, awccd)..."
+(cd "${ROOT_DIR}" && cargo build --release)
+
+# 2. Sync compiled Rust binaries
+echo "[2/4] Installing awccctl and awccd to ${LOCAL_BIN}..."
+cp -f "${ROOT_DIR}/target/release/awccctl" "${LOCAL_BIN}/awccctl"
+cp -f "${ROOT_DIR}/target/release/awccd" "${LOCAL_BIN}/awccd"
+chmod +x "${LOCAL_BIN}/awccctl" "${LOCAL_BIN}/awccd"
+
+# 3. Sync dashboard & mode scripts
+echo "[3/4] Installing dashboard and mode actuation scripts..."
+cp -f "${ROOT_DIR}/bin/awcc-lux-dashboard.py" "${LOCAL_BIN}/awcc-lux-dashboard.py"
+cp -f "${ROOT_DIR}/bin/awcc-mode" "${LOCAL_BIN}/awcc-mode"
+cp -f "${ROOT_DIR}/bin/awcc-mode.sh" "${LOCAL_BIN}/awcc-mode.sh"
+cp -f "${ROOT_DIR}/bin/awcc-track" "${LOCAL_BIN}/awcc-track"
+chmod +x \
+    "${LOCAL_BIN}/awcc-lux-dashboard.py" \
+    "${LOCAL_BIN}/awcc-mode" \
+    "${LOCAL_BIN}/awcc-mode.sh" \
+    "${LOCAL_BIN}/awcc-track"
+
+# 4. Sync profile actuation shortcuts
+echo "[4/4] Synchronizing mode shortcuts (awcc-quiet, awcc-balance, etc.)..."
+for profile in battery quiet balance mid high ultra; do
+    SHORTCUT="${LOCAL_BIN}/awcc-${profile}"
+    cat << 'EOF' > "${SHORTCUT}"
+#!/usr/bin/env bash
+set -euo pipefail
+PROFILE="$(basename "$0" | sed 's/^awcc-//')"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+if [[ -x "${SCRIPT_DIR}/awcc-mode" ]]; then
+    exec "${SCRIPT_DIR}/awcc-mode" "${PROFILE}" "$@"
+elif command -v awcc-mode >/dev/null 2>&1; then
+    exec awcc-mode "${PROFILE}" "$@"
+else
+    echo "[-] Error: awcc-mode not found in PATH or ~/.local/bin." >&2
+    exit 1
+fi
+EOF
+    chmod +x "${SHORTCUT}"
+    ln -sf "${SHORTCUT}" "${LOCAL_BIN}/${profile}"
+done
+
+echo "=========================================================================="
+echo "[+] All AWCC Linux binaries and scripts synchronized successfully to ${LOCAL_BIN}!"
+echo "    - awccctl status         (Comprehensive telemetry matrix)"
+echo "    - awccctl track          (Real-time CLI monitoring)"
+echo "    - awcc-lux-dashboard.py  (Cybernetic TrueColor cockpit)"
+echo "    - awcc-quiet [--track]   (Silent mode actuation + live tracking)"
+echo "    - awcc-track             (Dedicated live telemetry tracking)"
+echo "=========================================================================="

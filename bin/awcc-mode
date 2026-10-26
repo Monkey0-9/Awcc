@@ -26,6 +26,7 @@ if [[ -z "${PPROF_FILE}" ]] && [[ -f /sys/firmware/acpi/platform_profile ]]; the
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+ROOT_DIR="$(dirname "${SCRIPT_DIR}")"
 DASHBOARD_SCRIPT=""
 for candidate in \
     "${SCRIPT_DIR}/awcc-lux-dashboard.py" \
@@ -38,8 +39,24 @@ for candidate in \
     fi
 done
 
+# Dynamic hardware identification
+VENDOR="Generic"
+PRODUCT="Linux PC"
+if [[ -f /sys/devices/virtual/dmi/id/sys_vendor ]]; then
+    VENDOR="$(cat /sys/devices/virtual/dmi/id/sys_vendor 2>/dev/null | tr -d '\0' | xargs)"
+fi
+if [[ -f /sys/devices/virtual/dmi/id/product_name ]]; then
+    PRODUCT="$(cat /sys/devices/virtual/dmi/id/product_name 2>/dev/null | tr -d '\0' | xargs)"
+fi
+CLEAN_VENDOR="$(echo "${VENDOR}" | sed -E 's/ inc\.?| ltd\.?| corp\.?| corporation//gI' | xargs)"
+if [[ "${PRODUCT,,}" == "${CLEAN_VENDOR,,}"* ]]; then
+    DISPLAY_MACHINE="${PRODUCT}"
+else
+    DISPLAY_MACHINE="${CLEAN_VENDOR} ${PRODUCT}"
+fi
+
 # If no mode argument is provided or a flag is passed, launch the live monitor
-if [[ -z "${MODE}" ]] || [[ "${MODE}" =~ ^- ]] || [[ "${MODE,,}" == "monitor" ]] || [[ "${MODE,,}" == "live" ]]; then
+if [[ -z "${MODE}" ]] || [[ "${MODE}" =~ ^- ]] || [[ "${MODE,,}" == "monitor" ]] || [[ "${MODE,,}" == "live" ]] || [[ "${MODE,,}" == "track" ]]; then
     if [[ -n "$DASHBOARD_SCRIPT" ]]; then
         exec python3 "$DASHBOARD_SCRIPT" "$@"
     else
@@ -85,10 +102,10 @@ case "${MODE,,}" in
         ;;
 esac
 
-echo "================================================================="
+echo "=========================================================================="
 echo " AWCC Linux: Actuating ${TITLE}"
-echo " Target Machine: Dell G15 5530"
-echo "================================================================="
+echo " Target Machine: ${DISPLAY_MACHINE}"
+echo "=========================================================================="
 
 # 1. Apply Platform Profile
 echo "[1/3] Setting Platform Profile to '${PROFILE}'..."
@@ -133,23 +150,36 @@ else
     echo "OFF" > "$STATE_FILE"
 fi
 
-# 4. Telemetry / Presentation
+# 4. Handle flag transitions
 if [[ "$FLAG" == "--quiet" ]] || [[ "$FLAG" == "-q" ]]; then
     exit 0
+elif [[ "$FLAG" == "--track" ]] || [[ "$FLAG" == "-t" ]] || [[ "$FLAG" == "--watch" ]] || [[ "$FLAG" == "-w" ]]; then
+    echo "[*] Transitioning directly to real-time hardware tracking cockpit..."
+    sleep 0.4
+    if [[ -n "$DASHBOARD_SCRIPT" ]]; then
+        exec python3 "$DASHBOARD_SCRIPT"
+    elif [[ -x "${ROOT_DIR}/target/release/awccctl" ]]; then
+        exec "${ROOT_DIR}/target/release/awccctl" status --watch
+    fi
 elif [[ "$FLAG" == "--snapshot" ]] || [[ "$FLAG" == "-s" ]] || [[ "$FLAG" == "--once" ]]; then
     if [[ -n "$DASHBOARD_SCRIPT" ]]; then
         python3 "$DASHBOARD_SCRIPT" --snapshot
     fi
 else
     echo "[3/3] Current System & Thermal Status:"
-    if command -v awccctl >/dev/null 2>&1; then
-        awccctl status
-    elif [[ -x "${SCRIPT_DIR}/../target/release/awccctl" ]]; then
-        "${SCRIPT_DIR}/../target/release/awccctl" status
-    elif [[ -x "${SCRIPT_DIR}/../target/debug/awccctl" ]]; then
-        "${SCRIPT_DIR}/../target/debug/awccctl" status
+    AWCCCTL_BIN=""
+    if [[ -x "${ROOT_DIR}/target/release/awccctl" ]]; then
+        AWCCCTL_BIN="${ROOT_DIR}/target/release/awccctl"
+    elif [[ -x "${HOME}/.local/bin/awccctl" ]]; then
+        AWCCCTL_BIN="${HOME}/.local/bin/awccctl"
+    elif command -v awccctl >/dev/null 2>&1; then
+        AWCCCTL_BIN="$(command -v awccctl)"
     fi
-    echo "================================================================="
+
+    if [[ -n "${AWCCCTL_BIN}" ]]; then
+        "${AWCCCTL_BIN}" status
+    fi
+    echo "=========================================================================="
     echo "[+] ${TITLE} activated successfully."
-    echo "================================================================="
+    echo "=========================================================================="
 fi

@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+ROOT_DIR="$(dirname "${SCRIPT_DIR}")"
+
+DASHBOARD_SCRIPT=""
+for candidate in \
+    "${SCRIPT_DIR}/awcc-lux-dashboard.py" \
+    "${HOME}/.local/bin/awcc-lux-dashboard.py" \
+    "/usr/local/bin/awcc-lux-dashboard.py" \
+    "/usr/bin/awcc-lux-dashboard.py"; do
+    if [[ -f "$candidate" ]]; then
+        DASHBOARD_SCRIPT="$candidate"
+        break
+    fi
+done
+
+AWCCCTL_BIN=""
+for candidate in \
+    "${ROOT_DIR}/target/release/awccctl" \
+    "${HOME}/.local/bin/awccctl" \
+    "/usr/local/bin/awccctl" \
+    "/usr/bin/awccctl"; do
+    if [[ -x "$candidate" ]]; then
+        AWCCCTL_BIN="$candidate"
+        break
+    fi
+done
+
+# If JSON streaming is requested, use awccctl
+if [[ "${1:-}" == "--json" ]] || [[ "${2:-}" == "--json" ]]; then
+    if [[ -n "$AWCCCTL_BIN" ]]; then
+        exec "$AWCCCTL_BIN" track "$@"
+    else
+        echo "[-] Error: awccctl binary not found for JSON tracking." >&2
+        exit 1
+    fi
+fi
+
+# If live terminal cockpit is available, launch it
+if [[ -n "$DASHBOARD_SCRIPT" ]]; then
+    exec python3 "$DASHBOARD_SCRIPT" "$@"
+elif [[ -n "$AWCCCTL_BIN" ]]; then
+    exec "$AWCCCTL_BIN" track "$@"
+else
+    echo "[-] Error: Neither awcc-lux-dashboard.py nor awccctl found." >&2
+    exit 1
+fi

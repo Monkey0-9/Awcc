@@ -51,6 +51,47 @@ pub struct FanTelemetry {
     pub provider: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CpuComputeTelemetry {
+    pub model_name: String,
+    pub cores_logical: usize,
+    pub cur_freq_mhz: Option<f32>,
+    pub max_freq_mhz: Option<f32>,
+    pub scaling_governor: Option<String>,
+    pub energy_perf_preference: Option<String>,
+    pub usage_percent: Option<f32>,
+    pub package_power_watts: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GpuComputeTelemetry {
+    pub model_name: Option<String>,
+    pub core_clock_mhz: Option<u32>,
+    pub memory_clock_mhz: Option<u32>,
+    pub utilization_gpu_percent: Option<u32>,
+    pub memory_used_mb: Option<u64>,
+    pub memory_total_mb: Option<u64>,
+    pub power_draw_watts: Option<f32>,
+    pub power_limit_watts: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MemoryTelemetry {
+    pub ram_used_mb: u64,
+    pub ram_total_mb: u64,
+    pub ram_used_percent: f32,
+    pub swap_used_mb: u64,
+    pub swap_total_mb: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PowerTelemetry {
+    pub ac_online: bool,
+    pub battery_percent: Option<f32>,
+    pub battery_status: Option<String>,
+    pub charge_rate_watts: Option<f32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemTelemetry {
     pub dmi_vendor: String,
@@ -64,4 +105,12 @@ pub struct SystemTelemetry {
     pub hwmon_dell_smm_path: Option<String>,
     pub thermals: ThermalTelemetry,
     pub fans: Vec<FanTelemetry>,
+    #[serde(default)]
+    pub cpu: Option<CpuComputeTelemetry>,
+    #[serde(default)]
+    pub gpu: Option<GpuComputeTelemetry>,
+    #[serde(default)]
+    pub memory: Option<MemoryTelemetry>,
+    #[serde(default)]
+    pub power: Option<PowerTelemetry>,
 }

@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
 """
 AWCC Linux Cybernetic Master Control & Telemetry Cockpit
-Ultra-Luxurious Terminal UI & Real-Time Hardware Governor for Dell G15 5530
-Target: Dell G15 5530 (i7-13650HX, RTX 3050 6GB) on RHEL 10.2
+Multi-Vendor Hardware Governor, TrueColor Color-Graded Dashboard & Telemetry Matrix
+Dell G15 / Alienware / Multi-Vendor Hardware Support on Linux / RHEL / Fedora / Ubuntu / Arch
 
 Features:
-- Dynamic Auto-Responsive Layout: Adapts to ANY terminal width and height
-- Full-Screen Coverage: Fills 100% of terminal window without blank space
-- Adaptive Columns & Overflow Protection: Scales telemetry lines smoothly
-- High-Performance Event-Driven Input: <1ms key response via select()
-- Instant Direct Kernel Sysfs Actuation: Writes in 0.1ms without subshells
-- Robust SIGWINCH Handling: Re-renders immediately on window resize
-- Hardware Diagnostic & Error Reporting: Real-time visual feedback
-- Comprehensive Keypad & Function Key Support: 1-6, Numpad, F9 / Fn+F9
+- TrueColor (24-bit RGB) Color-Grading Theme Engine:
+    * Alienware Cryo-Tech Pro (Default)
+    * Cyberpunk 2077 Night City
+    * Alienware Dark Core OLED
+    * Solar Flare HUD
+    * Matrix Emerald Phosphor
+    * Vaporwave Sunset
+- Live Interactive Theme Cycling with [C] or [T] Key
+- Complete Hardware Telemetry Tracking:
+    * CPU: Model, Logical Cores, Load %, Clocks, Temps, RAPL Package Power (Watts), Governor, EPP
+    * GPU: Model, Load %, Graphics Clock, Memory Clock, Temp, VRAM Used/Total, Live Power Draw (Watts) vs TGP
+    * Motherboard & Environment: VRM Temp, Ambient Air Temp, Charger Temp, SODIMM Temp
+    * Cooling Turbines: RPM, Boost 0-255, Duty %, Max Ceiling (5,029 RPM), Acoustic Baseline
+    * Memory & Power: RAM Breakdown, Swap, AC Status, Battery %, Charge/Discharge Watts
+- Event-Driven Non-Blocking Keypad (<1ms response via select()): 1-6 Profiles, F9 Game Shift, C/T Themes
+- Seamless SIGWINCH terminal resize adaptation without stippling or text wrapping
 """
 
 import os
@@ -62,7 +70,7 @@ def fit(text, width, align='left'):
                     cur_w += cw
                 if cur_w >= width:
                     break
-        return ''.join(result) + RESET + (' ' * (width - cur_w))
+        return ''.join(result) + '\033[0m' + (' ' * (width - cur_w))
     pad = width - w
     if align == 'right':
         return (' ' * pad) + text
@@ -73,46 +81,186 @@ def fit(text, width, align='left'):
     else:
         return text + (' ' * pad)
 
-# TrueColor Cybernetic Alienware Palette
+# ANSI Basics
 RESET         = '\033[0m'
 BOLD          = '\033[1m'
 DIM           = '\033[2m'
-
-CYAN_ACCENT   = '\033[38;2;0;235;255m'
-CYAN_BRIGHT   = '\033[1;38;2;0;255;230m'
-NEON_GREEN    = '\033[1;38;2;0;255;170m'
-ELECTRIC_PURP = '\033[1;38;2;180;100;255m'
-SOLAR_AMBER   = '\033[1;38;2;255;190;0m'
-CRIMSON_RED   = '\033[1;38;2;255;45;75m'
-BLAZE_ORANGE  = '\033[1;38;2;255;120;0m'
+WHITE_BOLD    = '\033[1;38;2;255;255;255m'
 MUTED_GRAY    = '\033[38;2;125;140;160m'
 TEXT_DIM      = '\033[38;2;165;180;195m'
-WHITE_BOLD    = '\033[1;38;2;255;255;255m'
-TRACK_GRAY    = '\033[38;2;70;85;110m'
+
+# --- TrueColor Color-Grading Theme Engine ---
+class ColorTheme:
+    def __init__(self, key, name, border_rgb, accent_rgb, title_rgb, track_rgb,
+                 stops_cool, stops_cpu, stops_gpu, stops_vram, stops_ram,
+                 badge_bg_rgb, badge_fg_rgb):
+        self.key = key
+        self.name = name
+        self.border = f"\033[38;2;{border_rgb[0]};{border_rgb[1]};{border_rgb[2]}m"
+        self.border_corner = f"\033[1;38;2;{accent_rgb[0]};{accent_rgb[1]};{accent_rgb[2]}m"
+        self.accent = f"\033[38;2;{accent_rgb[0]};{accent_rgb[1]};{accent_rgb[2]}m"
+        self.accent_bright = f"\033[1;38;2;{accent_rgb[0]};{accent_rgb[1]};{accent_rgb[2]}m"
+        self.title = f"\033[1;38;2;{title_rgb[0]};{title_rgb[1]};{title_rgb[2]}m"
+        self.track = f"\033[38;2;{track_rgb[0]};{track_rgb[1]};{track_rgb[2]}m"
+        self.stops_cool = stops_cool
+        self.stops_cpu = stops_cpu
+        self.stops_gpu = stops_gpu
+        self.stops_vram = stops_vram
+        self.stops_ram = stops_ram
+        self.badge_bg = f"\033[48;2;{badge_bg_rgb[0]};{badge_bg_rgb[1]};{badge_bg_rgb[2]}m"
+        self.badge_fg = f"\033[1;38;2;{badge_fg_rgb[0]};{badge_fg_rgb[1]};{badge_fg_rgb[2]}m"
+
+THEMES = {
+    "cryo": ColorTheme(
+        key="cryo",
+        name="Alienware Cryo-Tech Pro",
+        border_rgb=(34, 52, 74),
+        accent_rgb=(0, 229, 255),
+        title_rgb=(0, 255, 170),
+        track_rgb=(25, 38, 54),
+        stops_cool=[(0.0, (0, 220, 255)), (0.4, (0, 255, 180)), (0.7, (255, 190, 0)), (1.0, (255, 45, 75))],
+        stops_cpu=[(0.0, (0, 230, 255)), (0.5, (0, 255, 170)), (0.8, (255, 180, 0)), (1.0, (255, 45, 75))],
+        stops_gpu=[(0.0, (0, 255, 190)), (0.5, (0, 230, 255)), (0.8, (255, 160, 0)), (1.0, (255, 45, 75))],
+        stops_vram=[(0.0, (170, 100, 255)), (0.6, (0, 230, 255)), (1.0, (255, 45, 75))],
+        stops_ram=[(0.0, (0, 210, 255)), (0.6, (140, 110, 255)), (1.0, (255, 50, 80))],
+        badge_bg_rgb=(13, 59, 66),
+        badge_fg_rgb=(0, 242, 254),
+    ),
+    "cyberpunk": ColorTheme(
+        key="cyberpunk",
+        name="Cyberpunk 2077 Night City",
+        border_rgb=(58, 42, 64),
+        accent_rgb=(252, 238, 10),
+        title_rgb=(255, 0, 85),
+        track_rgb=(38, 28, 44),
+        stops_cool=[(0.0, (0, 240, 255)), (0.5, (252, 238, 10)), (1.0, (255, 0, 85))],
+        stops_cpu=[(0.0, (0, 240, 255)), (0.5, (252, 238, 10)), (1.0, (255, 0, 85))],
+        stops_gpu=[(0.0, (0, 255, 170)), (0.5, (252, 238, 10)), (1.0, (255, 0, 85))],
+        stops_vram=[(0.0, (255, 0, 180)), (0.5, (170, 0, 255)), (1.0, (255, 0, 85))],
+        stops_ram=[(0.0, (0, 230, 255)), (0.5, (255, 0, 180)), (1.0, (252, 238, 10))],
+        badge_bg_rgb=(60, 20, 40),
+        badge_fg_rgb=(252, 238, 10),
+    ),
+    "darkcore": ColorTheme(
+        key="darkcore",
+        name="Alienware Dark Core OLED",
+        border_rgb=(28, 38, 54),
+        accent_rgb=(56, 189, 248),
+        title_rgb=(248, 250, 252),
+        track_rgb=(15, 23, 42),
+        stops_cool=[(0.0, (56, 189, 248)), (0.6, (14, 165, 233)), (1.0, (244, 63, 94))],
+        stops_cpu=[(0.0, (56, 189, 248)), (0.6, (99, 102, 241)), (1.0, (244, 63, 94))],
+        stops_gpu=[(0.0, (45, 212, 191)), (0.6, (56, 189, 248)), (1.0, (244, 63, 94))],
+        stops_vram=[(0.0, (168, 85, 247)), (0.6, (56, 189, 248)), (1.0, (244, 63, 94))],
+        stops_ram=[(0.0, (56, 189, 248)), (0.6, (168, 85, 247)), (1.0, (244, 63, 94))],
+        badge_bg_rgb=(15, 30, 50),
+        badge_fg_rgb=(56, 189, 248),
+    ),
+    "solar": ColorTheme(
+        key="solar",
+        name="Solar Flare HUD",
+        border_rgb=(65, 45, 30),
+        accent_rgb=(255, 180, 0),
+        title_rgb=(255, 215, 0),
+        track_rgb=(42, 28, 18),
+        stops_cool=[(0.0, (255, 215, 0)), (0.5, (255, 140, 0)), (1.0, (255, 40, 0))],
+        stops_cpu=[(0.0, (255, 215, 0)), (0.5, (255, 140, 0)), (1.0, (255, 40, 0))],
+        stops_gpu=[(0.0, (255, 200, 50)), (0.5, (255, 130, 0)), (1.0, (255, 40, 0))],
+        stops_vram=[(0.0, (255, 140, 0)), (0.6, (255, 80, 0)), (1.0, (255, 0, 50))],
+        stops_ram=[(0.0, (255, 200, 0)), (0.6, (255, 110, 0)), (1.0, (255, 40, 0))],
+        badge_bg_rgb=(50, 30, 10),
+        badge_fg_rgb=(255, 215, 0),
+    ),
+    "matrix": ColorTheme(
+        key="matrix",
+        name="Matrix Emerald Phosphor",
+        border_rgb=(20, 55, 30),
+        accent_rgb=(0, 255, 120),
+        title_rgb=(0, 255, 160),
+        track_rgb=(12, 32, 18),
+        stops_cool=[(0.0, (0, 255, 140)), (0.6, (50, 220, 90)), (1.0, (200, 255, 50))],
+        stops_cpu=[(0.0, (0, 255, 140)), (0.6, (50, 220, 90)), (1.0, (200, 255, 50))],
+        stops_gpu=[(0.0, (0, 255, 120)), (0.6, (50, 220, 90)), (1.0, (200, 255, 50))],
+        stops_vram=[(0.0, (0, 220, 160)), (0.6, (0, 255, 120)), (1.0, (180, 255, 40))],
+        stops_ram=[(0.0, (0, 255, 130)), (0.6, (40, 200, 90)), (1.0, (180, 255, 40))],
+        badge_bg_rgb=(10, 45, 20),
+        badge_fg_rgb=(0, 255, 140),
+    ),
+    "vaporwave": ColorTheme(
+        key="vaporwave",
+        name="Vaporwave Sunset",
+        border_rgb=(55, 30, 75),
+        accent_rgb=(255, 113, 206),
+        title_rgb=(1, 205, 254),
+        track_rgb=(35, 18, 50),
+        stops_cool=[(0.0, (1, 205, 254)), (0.5, (185, 103, 255)), (1.0, (255, 113, 206))],
+        stops_cpu=[(0.0, (1, 205, 254)), (0.5, (185, 103, 255)), (1.0, (255, 113, 206))],
+        stops_gpu=[(0.0, (5, 255, 161)), (0.5, (1, 205, 254)), (1.0, (255, 113, 206))],
+        stops_vram=[(0.0, (185, 103, 255)), (0.6, (255, 113, 206)), (1.0, (255, 251, 150))],
+        stops_ram=[(0.0, (1, 205, 254)), (0.6, (185, 103, 255)), (1.0, (255, 113, 206))],
+        badge_bg_rgb=(50, 20, 65),
+        badge_fg_rgb=(255, 113, 206),
+    ),
+}
+
+THEME_ORDER = ["cryo", "cyberpunk", "darkcore", "solar", "matrix", "vaporwave"]
+THEME_CONFIG_FILE = os.path.expanduser("~/.config/awcc/theme")
+
+def load_persisted_theme():
+    try:
+        if os.path.isfile(THEME_CONFIG_FILE):
+            with open(THEME_CONFIG_FILE, "r") as f:
+                k = f.read().strip().lower()
+                if k in THEMES:
+                    return k
+    except Exception:
+        pass
+    return "cryo"
+
+def save_persisted_theme(k):
+    try:
+        os.makedirs(os.path.dirname(THEME_CONFIG_FILE), exist_ok=True)
+        with open(THEME_CONFIG_FILE, "w") as f:
+            f.write(k + "\n")
+    except Exception:
+        pass
+
+CURRENT_THEME_KEY = load_persisted_theme()
+
+def get_current_theme():
+    return THEMES.get(CURRENT_THEME_KEY, THEMES["cryo"])
+
+def cycle_next_theme():
+    global CURRENT_THEME_KEY
+    idx = THEME_ORDER.index(CURRENT_THEME_KEY) if CURRENT_THEME_KEY in THEME_ORDER else 0
+    next_idx = (idx + 1) % len(THEME_ORDER)
+    CURRENT_THEME_KEY = THEME_ORDER[next_idx]
+    save_persisted_theme(CURRENT_THEME_KEY)
+    return THEMES[CURRENT_THEME_KEY]
 
 # Dynamic Terminal Geometry Engine
 def get_box_dimensions():
     cols, rows = shutil.get_terminal_size(fallback=(80, 24))
     box_width = max(36, cols)
     inner_width = max(32, box_width - 4)
-    # Gauge width scales smoothly with terminal width
     if inner_width >= 120:
-        gauge_width = min(36, inner_width // 4)
+        gauge_width = min(32, inner_width // 4)
     elif inner_width >= 80:
-        gauge_width = min(24, inner_width // 4)
+        gauge_width = min(20, inner_width // 4)
     elif inner_width >= 60:
-        gauge_width = 12
+        gauge_width = 10
     else:
         gauge_width = 8
     return box_width, inner_width, gauge_width, rows
 
-def make_row(content, inner_width):
+def make_row(content, inner_width, theme=None):
+    t = theme if theme else get_current_theme()
     w = str_display_width(content)
     if w > inner_width:
         content = fit(content, inner_width)
         w = inner_width
     pad = max(0, inner_width - w)
-    return f"{CYAN_ACCENT}║{RESET} {content}{' ' * pad} {CYAN_ACCENT}║{RESET}\033[K"
+    return f"{t.border}║{RESET} {content}{' ' * pad} {t.border}║{RESET}\033[K"
 
 def align_split(left_text, right_text, target_width):
     lw = str_display_width(left_text)
@@ -129,27 +277,23 @@ def align_three(left, center, right, target_width):
     s2 = rem - s1
     return f"{left}{' ' * s1}{center}{' ' * s2}{right}"
 
-def render_gauge(val, max_val, width, color_stops=None):
+def render_gauge(val, max_val, width, color_stops=None, theme=None):
+    t = theme if theme else get_current_theme()
     if color_stops is None:
-        color_stops = [
-            (0.0, (0, 235, 255)),
-            (0.4, (0, 255, 170)),
-            (0.7, (255, 190, 0)),
-            (1.0, (255, 45, 75))
-        ]
+        color_stops = t.stops_cpu
     ratio = max(0.0, min(1.0, (val / max_val) if max_val > 0 else 0.0))
     filled = int(ratio * width)
     empty = width - filled
 
     chars = []
     for i in range(filled):
-        t = i / max(1, width - 1)
+        pos_t = i / max(1, width - 1)
         c = color_stops[-1][1]
         for s in range(len(color_stops) - 1):
             s1_t, s1_c = color_stops[s]
             s2_t, s2_c = color_stops[s + 1]
-            if s1_t <= t <= s2_t:
-                local_t = (t - s1_t) / (s2_t - s1_t) if s2_t > s1_t else 0.0
+            if s1_t <= pos_t <= s2_t:
+                local_t = (pos_t - s1_t) / (s2_t - s1_t) if s2_t > s1_t else 0.0
                 c = (
                     int(s1_c[0] + (s2_c[0] - s1_c[0]) * local_t),
                     int(s1_c[1] + (s2_c[1] - s1_c[1]) * local_t),
@@ -158,18 +302,17 @@ def render_gauge(val, max_val, width, color_stops=None):
                 break
         chars.append(f"\033[38;2;{c[0]};{c[1]};{c[2]}m█")
 
-    chars.append(f"{TRACK_GRAY}{'░' * empty}{RESET}")
+    chars.append(f"{t.track}{'░' * empty}{RESET}")
     return "".join(chars)
 
 def format_telemetry_line(label, gauge_str, val_str, mid_str, right_str, inner_width, gauge_width):
-    # Adaptively adjust column allocation to fit inner_width without line wrapping
     if inner_width >= 80:
-        lbl_w = 16
-        val_w = 8
+        lbl_w = 15
+        val_w = 6
         fixed = lbl_w + 1 + gauge_width + 1 + val_w + 3 + 3
         rem = max(12, inner_width - fixed)
-        mid_w = rem // 2
-        right_w = rem - mid_w
+        right_w = 16
+        mid_w = max(8, rem - right_w)
         l = fit(label, lbl_w)
         v = fit(val_str, val_w, 'right')
         m = fit(mid_str, mid_w)
@@ -180,8 +323,8 @@ def format_telemetry_line(label, gauge_str, val_str, mid_str, right_str, inner_w
         val_w = 7
         fixed = lbl_w + 1 + gauge_width + 1 + val_w + 3 + 3
         rem = max(10, inner_width - fixed)
-        mid_w = int(rem * 0.55)
-        right_w = rem - mid_w
+        right_w = 15
+        mid_w = max(8, rem - right_w)
         l = fit(label, lbl_w)
         v = fit(val_str, val_w, 'right')
         m = fit(mid_str, mid_w)
@@ -189,7 +332,7 @@ def format_telemetry_line(label, gauge_str, val_str, mid_str, right_str, inner_w
         line = f"{l} {gauge_str} {v} {MUTED_GRAY}│{RESET} {m} {MUTED_GRAY}│{RESET} {r}"
     elif inner_width >= 48:
         lbl_w = 12
-        val_w = 7
+        val_w = 6
         rem = max(8, inner_width - lbl_w - 1 - gauge_width - 1 - val_w - 3)
         l = fit(label, lbl_w)
         v = fit(val_str, val_w, 'right')
@@ -235,7 +378,14 @@ def get_dmi_info():
                 product = f.read().strip()
     except Exception:
         pass
-    return vendor, product
+
+    # Clean and deduplicate: e.g. "Dell Inc." + "Dell G15 5530" -> "DELL G15 5530"
+    v_clean = re.sub(r'(?i)\binc\.?|\bltd\.?|\bcorp\.?|\bcorporation\b', '', vendor).strip()
+    if product.lower().startswith(v_clean.lower()):
+        display_machine = product
+    else:
+        display_machine = f"{v_clean} {product}"
+    return vendor, product, display_machine.strip()
 
 def get_os_release():
     distro = "Linux"
@@ -272,8 +422,13 @@ def get_cpu_model():
                 for line in f:
                     if "model name" in line:
                         m = line.split(":", 1)[1].strip()
-                        m = re.sub(r'\(R\)|\(TM\)|Processor|CPU|@.*', '', m).strip()
-                        words = m.split()
+                        # Match specific Intel/AMD pattern: e.g. i7-13650HX, Ryzen 7 7840HS
+                        for pat in [r'(i[3579]-\w+)', r'(Ryzen \d+ \w+)', r'(Ultra \d+ \w+)', r'(Xeon \w+)']:
+                            match = re.search(pat, m)
+                            if match:
+                                return match.group(1)
+                        cleaned = re.sub(r'\(R\)|\(TM\)|Processor|CPU|@.*', '', m).strip()
+                        words = cleaned.split()
                         model = " ".join(words[:2]) if words else "CPU"
                         break
     except Exception:
@@ -285,7 +440,8 @@ def get_gpu_name():
         res = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], capture_output=True, text=True, timeout=1)
         if res.returncode == 0 and res.stdout.strip():
             name = res.stdout.strip().split("\n")[0]
-            name = re.sub(r'NVIDIA GeForce | Laptop GPU', '', name).strip()
+            # e.g. "NVIDIA GeForce RTX 3050 6GB Laptop GPU" -> "RTX 3050 GPU"
+            name = re.sub(r'NVIDIA GeForce | Laptop GPU| \d+GB', '', name).strip()
             return f"{name} GPU"
     except Exception:
         pass
@@ -302,7 +458,6 @@ def get_verification_tier(vendor, has_aw_hwmon):
 def get_platform_profile_path():
     class_dir = sysfs_path("sys/class/platform-profile")
     if os.path.isdir(class_dir):
-        # 1. Prefer alienware-wmi class provider
         for entry in sorted(os.listdir(class_dir)):
             p = os.path.join(class_dir, entry)
             name_file = os.path.join(p, "name")
@@ -315,19 +470,16 @@ def get_platform_profile_path():
                                 return prof
                 except Exception:
                     pass
-        # 2. Fall back to any provider in class_dir
         for entry in sorted(os.listdir(class_dir)):
             prof = os.path.join(class_dir, entry, "profile")
             if os.path.isfile(prof):
                 return prof
-    # 3. Fall back to firmware acpi node
     acpi_node = sysfs_path("sys/firmware/acpi/platform_profile")
     if os.path.isfile(acpi_node):
         return acpi_node
     return None
 
 def write_sysfs_value(path, value):
-    """Write value to sysfs path; falls back to sudo tee if permission denied."""
     try:
         with open(path, "w") as f:
             f.write(str(value))
@@ -365,7 +517,7 @@ def get_fan_max(aw_hwmon):
             pass
     return m1, m2
 
-def get_cpu_info(prev_total, prev_idle):
+def get_cpu_info(prev_total, prev_idle, prev_rapl_uj=0, prev_rapl_time=0.0):
     try:
         with open("/proc/stat", "r") as f:
             fields = [float(x) for x in f.readline().strip().split()[1:]]
@@ -400,22 +552,41 @@ def get_cpu_info(prev_total, prev_idle):
             except Exception:
                 pass
 
-    return total, idle, usage, avg_mhz, temp
+    rapl_watts = None
+    cur_rapl_uj = 0
+    cur_rapl_time = time.time()
+    rapl_path = sysfs_path("sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj")
+    if os.path.isfile(rapl_path):
+        try:
+            with open(rapl_path, "r") as f:
+                cur_rapl_uj = int(f.read().strip())
+            if prev_rapl_uj > 0 and cur_rapl_time > prev_rapl_time:
+                diff_j = (cur_rapl_uj - prev_rapl_uj) / 1_000_000.0
+                diff_t = cur_rapl_time - prev_rapl_time
+                if diff_t > 0:
+                    rapl_watts = diff_j / diff_t
+        except Exception:
+            pass
+
+    return total, idle, usage, avg_mhz, temp, rapl_watts, cur_rapl_uj, cur_rapl_time
 
 def get_gpu_info():
     try:
         cmd = [
             "nvidia-smi",
-            "--query-gpu=utilization.gpu,temperature.gpu,clocks.current.graphics,clocks.current.memory,memory.used,memory.total,power.draw",
+            "--query-gpu=utilization.gpu,temperature.gpu,clocks.current.graphics,clocks.current.memory,memory.used,memory.total,power.draw.average,power.draw.instant,enforced.power.limit",
             "--format=csv,noheader,nounits"
         ]
         res = subprocess.run(cmd, capture_output=True, text=True, check=True)
         parts = [p.strip() for p in res.stdout.strip().split(",")]
-        pwr = float(parts[6]) if len(parts) > 6 and parts[6] != "N/A" else 0.0
-        if pwr > 150.0:
-            pwr_str = "Idle/D3"
-        else:
-            pwr_str = f"{pwr:.1f}W"
+
+        pwr_avg = float(parts[6]) if len(parts) > 6 and parts[6] not in ("N/A", "[N/A]") else -1.0
+        pwr_inst = float(parts[7]) if len(parts) > 7 and parts[7] not in ("N/A", "[N/A]") else -1.0
+        pwr_limit = float(parts[8]) if len(parts) > 8 and parts[8] not in ("N/A", "[N/A]") else 80.0
+
+        pwr = pwr_avg if (0.0 <= pwr_avg <= 150.0) else (pwr_inst if (0.0 <= pwr_inst <= 150.0) else -1.0)
+        pwr_str = f"{pwr:.1f}W" if pwr >= 0 else "Idle/D3"
+
         return {
             "util": float(parts[0]),
             "temp": float(parts[1]),
@@ -424,12 +595,15 @@ def get_gpu_info():
             "vram_used": int(parts[4]),
             "vram_total": int(parts[5]),
             "pwr_str": pwr_str,
+            "pwr_val": pwr,
+            "pwr_limit": pwr_limit,
             "available": True
         }
     except Exception:
         return {
             "util": 0.0, "temp": 34.0, "clk": 210, "mem_clk": 405,
             "vram_used": 1, "vram_total": 6144, "pwr_str": "Idle/D3",
+            "pwr_val": 0.0, "pwr_limit": 80.0,
             "available": False
         }
 
@@ -448,7 +622,6 @@ def get_fans(aw_hwmon):
         fans.append({"index": 1, "label": "FAN 1 (CPU)", "boost": b1, "rpm": r1, "max": m1, "controllable": True})
         fans.append({"index": 2, "label": "FAN 2 (GPU)", "boost": b2, "rpm": r2, "max": m2, "controllable": True})
     else:
-        # Check standard hwmon chips
         hwmon_base = sysfs_path("sys/class/hwmon")
         if os.path.isdir(hwmon_base):
             for d in sorted(os.listdir(hwmon_base)):
@@ -573,7 +746,6 @@ MODE_DEFS = {
     6: {"name": "ultra",   "profile": "performance", "boost": 255, "label": "ULTRA / G-MODE",   "desc": "100% Boost (5,029 RPM)"},
 }
 
-# Real-Time Status / Error Tracking State
 LAST_STATUS_MSG = None
 LAST_STATUS_IS_ERROR = False
 LAST_STATUS_TIMESTAMP = 0.0
@@ -586,8 +758,6 @@ def apply_mode_direct(mode_idx, aw_hwmon):
         return False
 
     errs = []
-
-    # 1. Apply ACPI platform profile dynamically
     pprof_file = get_platform_profile_path()
     if pprof_file:
         ok, err = write_sysfs_value(pprof_file, cfg["profile"])
@@ -596,7 +766,6 @@ def apply_mode_direct(mode_idx, aw_hwmon):
     else:
         errs.append("platform_profile not found")
 
-    # 2. Apply fan boosts directly to hardware nodes
     if aw_hwmon and os.path.isdir(aw_hwmon):
         for b_name in ["fan1_boost", "fan2_boost"]:
             b_path = os.path.join(aw_hwmon, b_name)
@@ -607,7 +776,6 @@ def apply_mode_direct(mode_idx, aw_hwmon):
     else:
         errs.append("alienware_wmi hwmon not found")
 
-    # 3. Synchronize Game Shift state file
     try:
         with open("/tmp/.awcc_gmode_state", "w") as f:
             f.write("ON\n" if cfg["boost"] == 255 else "OFF\n")
@@ -620,11 +788,10 @@ def apply_mode_direct(mode_idx, aw_hwmon):
         LAST_STATUS_TIMESTAMP = time.time()
         return False
     else:
-        LAST_STATUS_MSG = f"Mode [{cfg['name'].upper()}] Applied: {cfg['label']} (Profile: {cfg['profile'].upper()}, Boost: {cfg['boost']})"
+        LAST_STATUS_MSG = f"Mode [{cfg['name'].upper()}] Applied: {cfg['label']} (Boost {cfg['boost']}/255)"
         LAST_STATUS_IS_ERROR = False
         LAST_STATUS_TIMESTAMP = time.time()
 
-    # 4. Trigger non-blocking visual/audio feedback
     try:
         is_turbo = (cfg["boost"] == 255)
         icon = "preferences-system-performance" if is_turbo else "preferences-system-power"
@@ -645,7 +812,6 @@ def apply_mode_direct(mode_idx, aw_hwmon):
     return True
 
 def toggle_gameshift_direct(aw_hwmon):
-    # Check state file or hardware boost
     is_active = False
     try:
         if os.path.isfile("/tmp/.awcc_gmode_state"):
@@ -671,10 +837,8 @@ def toggle_gameshift_direct(aw_hwmon):
 def decode_key(text):
     if not text:
         return None
-    # Function key F9 / Fn+F9 variations
     if any(k in text for k in ['\x1b[20~', '\x1b[19~', '\x1b[21~', '\x1b[24~', '\x1b[20', '\x1b[19', '\x1b[21']):
         return 'F9'
-    # Numpad & number row 1-6
     if '1' in text or '\x1bOq' in text or '\x1b[4~' in text:
         return 1
     if '2' in text or '\x1bOr' in text:
@@ -687,16 +851,23 @@ def decode_key(text):
         return 5
     if '6' in text or '\x1bOv' in text:
         return 6
-    if any(c in text for c in ['q', 'Q', 'x', 'X']) and not text.startswith('\x1b'):
+    if any(c in text for c in ['q', 'Q', 'x', 'X', '\x1b']) and len(text) == 1:
         return 'QUIT'
     if ('r' in text or 'R' in text) and not text.startswith('\x1b'):
         return 'REFRESH'
+    if any(c in text for c in ['c', 'C', 't', 'T']) and not text.startswith('\x1b'):
+        return 'THEME'
     return None
 
-def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status, max1=4800, max2=4800, fans=None):
+def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile,
+                        mem_used, mem_total, ac_online, bat_pct, bat_status,
+                        max1=5029, max2=5029, fans=None, rapl_watts=None, theme=None):
+    if theme is None:
+        theme = get_current_theme()
+
     box_width, inner_width, gauge_width, term_rows = get_box_dimensions()
     aw_hwmon = get_hwmon()
-    vendor, product = get_dmi_info()
+    vendor, product, display_machine = get_dmi_info()
     os_distro = get_os_release()
     tier_badge = get_verification_tier(vendor, aw_hwmon is not None)
     cpu_model = get_cpu_model()
@@ -713,99 +884,89 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
 
     if b1 >= 240:
         mode_label = "ULTRA (100% Boost)"
-        mode_color = CRIMSON_RED
+        mode_color = f"\033[1;38;2;255;45;75m"
     elif b1 >= 75:
         mode_label = "HIGH (85% Boost)"
-        mode_color = BLAZE_ORANGE
+        mode_color = f"\033[1;38;2;255;120;0m"
     elif b1 >= 50:
         mode_label = "MID (65% Boost)"
-        mode_color = SOLAR_AMBER
+        mode_color = f"\033[1;38;2;255;190;0m"
     elif b1 >= 30:
         mode_label = "BALANCE (40% Boost)"
-        mode_color = CYAN_BRIGHT
+        mode_color = theme.accent_bright
     elif b1 >= 15:
         mode_label = "QUIET (20% Boost)"
-        mode_color = NEON_GREEN
+        mode_color = f"\033[1;38;2;0;255;170m"
     elif b1 > 0:
         mode_label = "BATTERY (10% Boost)"
-        mode_color = ELECTRIC_PURP
+        mode_color = f"\033[1;38;2;180;100;255m"
     elif has_controllable_fans:
         mode_label = "PASSIVE (0% Boost)"
-        mode_color = ELECTRIC_PURP
+        mode_color = f"\033[1;38;2;180;100;255m"
     else:
         mode_label = f"PROFILE: {profile.upper()}"
-        mode_color = CYAN_BRIGHT
+        mode_color = theme.accent_bright
 
     if gmode_active:
         badge = f"\033[1;48;2;255;35;65m\033[38;2;255;255;255m  G-MODE EXTREME  \033[0m"
     elif has_controllable_fans:
-        badge = f"\033[48;2;32;42;58m\033[38;2;160;180;210m  ○ HYBRID QUIET  \033[0m"
+        badge = f"{theme.badge_bg}{theme.badge_fg}  ○ HYBRID QUIET  \033[0m"
     else:
-        badge = f"\033[48;2;25;50;75m\033[38;2;0;235;255m  ● BIOS CONTROL  \033[0m"
+        badge = f"{theme.badge_bg}{theme.badge_fg}  ● BIOS CONTROL  \033[0m"
 
     pwr_str = f"AC {bat_pct}% [ONLINE]" if ac_online else f"BAT {bat_pct}% [{bat_status.upper()}]"
 
-    # Color stops & gauges
-    fan_stops = [
-        (0.0, (0, 235, 255)),
-        (0.5, (0, 255, 170)),
-        (0.8, (255, 190, 0)),
-        (1.0, (255, 45, 75))
-    ]
+    # Smooth thermal color ramp
+    def temp_color(t):
+        if t >= 85: return f"\033[1;38;2;255;45;75m"
+        if t >= 72: return f"\033[1;38;2;255;170;0m"
+        if t >= 58: return f"\033[1;38;2;0;255;170m"
+        return f"\033[38;2;0;220;255m"
 
-    t_cpu_col = CRIMSON_RED if cpu_temp >= 82 else (SOLAR_AMBER if cpu_temp >= 68 else NEON_GREEN)
-    gauge_cpu = render_gauge(cpu_usage, 100, gauge_width)
+    t_cpu_col = temp_color(cpu_temp)
+    gauge_cpu = render_gauge(cpu_usage, 100, gauge_width, theme.stops_cpu, theme)
 
     g_temp = gpu["temp"]
-    t_gpu_col = CRIMSON_RED if g_temp >= 78 else (SOLAR_AMBER if g_temp >= 62 else NEON_GREEN)
-    gauge_gpu = render_gauge(gpu["util"], 100, gauge_width)
+    t_gpu_col = temp_color(g_temp)
+    gauge_gpu = render_gauge(gpu["util"], 100, gauge_width, theme.stops_gpu, theme)
 
     vram_pct = (gpu["vram_used"] / gpu["vram_total"] * 100) if gpu["vram_total"] > 0 else 0.0
     vram_used_gb = gpu["vram_used"] / 1024.0
     vram_total_gb = gpu["vram_total"] / 1024.0
-    gauge_vram = render_gauge(vram_pct, 100, gauge_width, [
-        (0.0, (180, 100, 255)),
-        (0.7, (0, 235, 255)),
-        (1.0, (255, 45, 75))
-    ])
+    gauge_vram = render_gauge(vram_pct, 100, gauge_width, theme.stops_vram, theme)
 
     ram_pct = (mem_used / mem_total * 100) if mem_total > 0 else 0.0
-    gauge_ram = render_gauge(ram_pct, 100, gauge_width, [
-        (0.0, (0, 235, 255)),
-        (0.6, (180, 100, 255)),
-        (1.0, (255, 45, 75))
-    ])
+    gauge_ram = render_gauge(ram_pct, 100, gauge_width, theme.stops_ram, theme)
 
-    # Borders
-    top = f"{CYAN_ACCENT}╔{'═' * (box_width - 2)}╗{RESET}\033[K"
-    div_double = f"{CYAN_ACCENT}╠{'═' * (box_width - 2)}╣{RESET}\033[K"
-    div_single = f"{CYAN_ACCENT}╟{'─' * (box_width - 2)}╢{RESET}\033[K"
-    bot = f"{CYAN_ACCENT}╚{'═' * (box_width - 2)}╝{RESET}\033[K"
+    top = f"{theme.border_corner}╔{theme.border}{'═' * (box_width - 2)}{theme.border_corner}╗{RESET}\033[K"
+    div_double = f"{theme.border_corner}╠{theme.border}{'═' * (box_width - 2)}{theme.border_corner}╣{RESET}\033[K"
+    div_single = f"{theme.border_corner}╟{theme.border}{'─' * (box_width - 2)}{theme.border_corner}╢{RESET}\033[K"
+    bot = f"{theme.border_corner}╚{theme.border}{'═' * (box_width - 2)}{theme.border_corner}╝{RESET}\033[K"
 
     rows = []
     rows.append(top)
 
     # 1. Header Block
-    hdr_left = f"{NEON_GREEN}▲ AWCC UNIVERSAL COCKPIT{RESET}"
-    hdr_center = f"{WHITE_BOLD}{vendor.upper()} {product.upper()}{RESET}"
+    hdr_left = f"{theme.title}▲ ALIENWARE COMMAND CENTER v2.5{RESET}"
+    hdr_center = f"{WHITE_BOLD}{display_machine.upper()}{RESET}"
     hdr_right = f"{MUTED_GRAY}{os_distro} {tier_badge}{RESET}"
-    rows.append(make_row(align_three(hdr_left, hdr_center, hdr_right, inner_width), inner_width))
+    rows.append(make_row(align_three(hdr_left, hdr_center, hdr_right, inner_width), inner_width, theme))
     rows.append(div_double)
 
     # 2. Status Block
     stat_left = f"{MUTED_GRAY}MODE:{RESET} {mode_color}{mode_label}{RESET}"
     stat_right = f"{MUTED_GRAY}PWR:{RESET} {WHITE_BOLD}{pwr_str}{RESET}"
-    rows.append(make_row(align_three(stat_left, badge, stat_right, inner_width), inner_width))
+    rows.append(make_row(align_three(stat_left, badge, stat_right, inner_width), inner_width, theme))
     rows.append(div_double)
 
-    # Optional Status / Error Banner
+    # Status / Error Banner
     now = time.time()
     if LAST_STATUS_MSG and (now - LAST_STATUS_TIMESTAMP < 4.0):
         if LAST_STATUS_IS_ERROR:
             msg = f"\033[1;48;2;255;45;75m\033[38;2;255;255;255m  [!] {LAST_STATUS_MSG}  \033[0m"
         else:
             msg = f"\033[1;48;2;0;140;100m\033[38;2;255;255;255m  ✓ {LAST_STATUS_MSG}  \033[0m"
-        rows.append(make_row(align_three("", msg, "", inner_width), inner_width))
+        rows.append(make_row(align_three("", msg, "", inner_width), inner_width, theme))
         rows.append(div_single)
 
     # 3. Cooling Turbines Block
@@ -818,61 +979,74 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
         if b > 0:    return " 10%"
         return "  0%"
 
-    max_ceiling = max([f["max"] for f in fans]) if fans else 4800
-    cool_left = f"{NEON_GREEN}[ COOLING TURBINES & ACTIVE THERMALS ]{RESET}"
+    max_ceiling = max([f["max"] for f in fans]) if fans else 5029
+    cool_left = f"{theme.title}[ DUAL HIGH-PRESSURE COOLING TURBINES ]{RESET}"
     cool_right = f"{MUTED_GRAY}MAX CEILING: {max_ceiling:,d} RPM{RESET}"
-    rows.append(make_row(align_split(cool_left, cool_right, inner_width), inner_width))
+    rows.append(make_row(align_split(cool_left, cool_right, inner_width), inner_width, theme))
 
     for f_info in fans:
-        f_gauge = render_gauge(f_info["rpm"], f_info["max"], gauge_width, fan_stops)
+        f_gauge = render_gauge(f_info["rpm"], f_info["max"], gauge_width, theme.stops_cool, theme)
         f_val = f"{WHITE_BOLD}{f_info['rpm']:4d}RPM{RESET}"
         if f_info.get("controllable", False):
             b = f_info["boost"]
-            f_mid = f"Boost: {CYAN_BRIGHT}{b:3d} ({boost_pct_str(b)}){RESET}"
+            f_mid = f"Boost: {theme.accent_bright}{b:3d} ({boost_pct_str(b)}){RESET}"
         else:
             f_mid = f"Control: {MUTED_GRAY}FIRMWARE AUTO{RESET}"
         f_right = f"{MUTED_GRAY}Max: {f_info['max']:,d} RPM{RESET}"
         rows.append(format_telemetry_line(f"{WHITE_BOLD}{f_info['label']}{RESET}", f_gauge, f_val, f_mid, f_right, inner_width, gauge_width))
+
+    # Prominently show Motherboard VRM & Ambient sensor readings in Cooling block
+    aux_temps = get_auxiliary_thermals()
+    vrm_val = aux_temps.get("VRM")
+    amb_val = aux_temps.get("Ambient")
+    if vrm_val or amb_val:
+        vrm_str = f"VRM: {temp_color(vrm_val or 0)}{vrm_val:.1f}°C{RESET}" if vrm_val else "VRM: N/A"
+        amb_str = f"Ambient: {temp_color(amb_val or 0)}{amb_val:.1f}°C{RESET}" if amb_val else "Ambient: N/A"
+        matrix_line = f"{MUTED_GRAY}THERMALS:{RESET} {vrm_str}  {MUTED_GRAY}•{RESET}  {amb_str}"
+        rows.append(make_row(align_split(f"{theme.accent}├─ SENSORS{RESET}", matrix_line, inner_width), inner_width, theme))
+
     rows.append(div_double)
 
     # 4. Silicon Computation & Thermals Block
-    silicon_left = f"{SOLAR_AMBER}[ SILICON COMPUTATION & THERMALS ]{RESET}"
+    silicon_left = f"{theme.title}[ SILICON COMPUTATION & THERMALS ]{RESET}"
     silicon_right = f"{MUTED_GRAY}ACPI Platform Profile Active{RESET}"
-    rows.append(make_row(align_split(silicon_left, silicon_right, inner_width), inner_width))
+    rows.append(make_row(align_split(silicon_left, silicon_right, inner_width), inner_width, theme))
 
-    cpu_val = f"{SOLAR_AMBER}{cpu_usage:5.1f}%{RESET}"
-    cpu_mid = f"Clock: {WHITE_BOLD}{cpu_mhz:4.0f} MHz{RESET}"
+    cpu_val = f"{theme.accent_bright}{cpu_usage:5.1f}%{RESET}"
+    cpu_pwr_str = f" | {rapl_watts:.0f}W" if rapl_watts else ""
+    cpu_mid = f"Clock: {WHITE_BOLD}{cpu_mhz:4.0f} MHz{RESET}{cpu_pwr_str}"
     cpu_right = f"{t_cpu_col}Temp: {cpu_temp:4.1f}°C{RESET}"
     rows.append(format_telemetry_line(f"{WHITE_BOLD}{cpu_model} CPU{RESET}", gauge_cpu, cpu_val, cpu_mid, cpu_right, inner_width, gauge_width))
 
-    gpu_val = f"{NEON_GREEN}{gpu['util']:5.1f}%{RESET}"
-    gpu_mid = f"Clock: {WHITE_BOLD}{gpu['clk']:4d} MHz{RESET}"
+    gpu_val = f"{theme.title}{gpu['util']:5.1f}%{RESET}"
+    gpu_pwr_str = f" | {gpu['pwr_str']}" if gpu.get("pwr_str") else ""
+    gpu_mid = f"Clock: {WHITE_BOLD}{gpu['clk']:4d} MHz{RESET}{gpu_pwr_str}"
     gpu_right = f"{t_gpu_col}Temp: {g_temp:4.1f}°C{RESET}"
     rows.append(format_telemetry_line(f"{WHITE_BOLD}{gpu_label}{RESET}", gauge_gpu, gpu_val, gpu_mid, gpu_right, inner_width, gauge_width))
 
-    vram_val = f"{ELECTRIC_PURP}{vram_pct:5.1f}%{RESET}"
+    vram_val = f"{f_info_col if 'f_info_col' in locals() else theme.accent}{vram_pct:5.1f}%{RESET}"
     vram_mid = f"Used:  {WHITE_BOLD}{vram_used_gb:4.2f} GB{RESET}"
     vram_right = f"{MUTED_GRAY}Limit: {vram_total_gb:4.2f} GB{RESET}"
     rows.append(format_telemetry_line(f"{WHITE_BOLD}GDDR6 VRAM{RESET}", gauge_vram, vram_val, vram_mid, vram_right, inner_width, gauge_width))
 
-    ram_val = f"{CYAN_BRIGHT}{ram_pct:5.1f}%{RESET}"
+    ram_val = f"{theme.accent_bright}{ram_pct:5.1f}%{RESET}"
     ram_mid = f"Used:  {WHITE_BOLD}{mem_used:4.1f} GB{RESET}"
     ram_right = f"{MUTED_GRAY}Total: {mem_total:4.1f} GB{RESET}"
     rows.append(format_telemetry_line(f"{WHITE_BOLD}SYSTEM RAM{RESET}", gauge_ram, ram_val, ram_mid, ram_right, inner_width, gauge_width))
 
-    # Calculate remaining vertical budget for full-terminal fit
+    # Footer Block
     footer_rows = []
     footer_rows.append(div_double)
+    th_label = theme.name.upper() if inner_width >= 88 else theme.key.upper()
     if has_controllable_fans:
-        hk_left = f"{ELECTRIC_PURP}HARDWARE HOTKEY:{RESET} {WHITE_BOLD}F9 / Fn+F9{RESET} (Game Shift Toggle)"
-        hk_right = f"{MUTED_GRAY}HARDWARE TURBO{RESET}"
+        hk_left = f"{theme.accent}HARDWARE HOTKEY:{RESET} {WHITE_BOLD}F9 / Fn+F9{RESET} (Game Shift Toggle)"
+        hk_right = f"{MUTED_GRAY}THEME: {th_label}{RESET}"
     else:
-        hk_left = f"{ELECTRIC_PURP}PROFILE HOTKEY:{RESET} {WHITE_BOLD}1-6{RESET} (Platform Thermal Profiles)"
-        hk_right = f"{MUTED_GRAY}ACPI PROFILE{RESET}"
-    footer_rows.append(make_row(align_split(hk_left, hk_right, inner_width), inner_width))
+        hk_left = f"{theme.accent}PROFILE HOTKEY:{RESET} {WHITE_BOLD}1-6{RESET} (Platform Thermal Profiles)"
+        hk_right = f"{MUTED_GRAY}THEME: {th_label}{RESET}"
+    footer_rows.append(make_row(align_split(hk_left, hk_right, inner_width), inner_width, theme))
     footer_rows.append(div_single)
 
-    # Dynamic mode button highlight in cockpit footer
     active_idx = 3
     if b1 >= 240:
         active_idx = 6
@@ -905,105 +1079,90 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
             mode_spans.append(f"{MUTED_GRAY}[{idx}] {display_name}{RESET}")
     sep = " " if use_short else "  "
     modes_line = f"{WHITE_BOLD}MODES:{RESET} " + sep.join(mode_spans)
-    footer_rows.append(make_row(modes_line, inner_width))
+    footer_rows.append(make_row(modes_line, inner_width, theme))
 
-    if has_controllable_fans:
-        if inner_width >= 65:
-            acts_line = f"{CYAN_ACCENT}ACTIONS:{RESET} [F9] Game Shift Toggle  •  [1-6] Profiles  •  [Q] Exit Cockpit"
-        else:
-            acts_line = f"{CYAN_ACCENT}ACTIONS:{RESET} [F9] GameShift  •  [1-6] Modes  •  [Q] Exit"
+    if inner_width >= 72:
+        acts_line = f"{theme.accent_bright}ACTIONS:{RESET} [F9] GameShift  •  [1-6] Profiles  •  [C/T] Theme  •  [Q] Exit"
     else:
-        if inner_width >= 65:
-            acts_line = f"{CYAN_ACCENT}ACTIONS:{RESET} [1-6] Platform Profiles  •  [Q] Exit Cockpit (Firmware Fan Control)"
-        else:
-            acts_line = f"{CYAN_ACCENT}ACTIONS:{RESET} [1-6] Profiles  •  [Q] Exit"
-    footer_rows.append(make_row(acts_line, inner_width))
+        acts_line = f"{theme.accent_bright}ACTIONS:{RESET} [F9] Turbo  •  [1-6] Modes  •  [C] Theme  •  [Q] Exit"
+    footer_rows.append(make_row(acts_line, inner_width, theme))
     footer_rows.append(bot)
 
-    # Compute row budget available between Silicon and Footer
     rem = term_rows - (len(rows) + len(footer_rows))
 
     # Dynamic Panel 1: System Governor, Load Averages & Uptime
     if rem >= 3:
         rows.append(div_double)
         load1, load5, load15, uptime_str, gov_str = get_system_diagnostics()
-        diag_left = f"{SOLAR_AMBER}[ SYSTEM ENVIRONMENT & GOVERNOR ]{RESET}"
+        diag_left = f"{theme.title}[ SYSTEM ENVIRONMENT & GOVERNOR ]{RESET}"
         diag_right = f"{MUTED_GRAY}Kernel 6.12 • ACPI WMAX Active{RESET}"
-        rows.append(make_row(align_split(diag_left, diag_right, inner_width), inner_width))
+        rows.append(make_row(align_split(diag_left, diag_right, inner_width), inner_width, theme))
 
         load_t = f"Load Avg: {WHITE_BOLD}{load1:.2f}, {load5:.2f}, {load15:.2f}{RESET}"
-        gov_t = f"Governor: {CYAN_BRIGHT}{gov_str.upper()}{RESET}"
+        gov_t = f"Governor: {theme.accent_bright}{gov_str.upper()}{RESET}"
         up_t = f"Uptime: {WHITE_BOLD}{uptime_str}{RESET}"
-        rows.append(make_row(align_three(load_t, gov_t, up_t, inner_width), inner_width))
+        rows.append(make_row(align_three(load_t, gov_t, up_t, inner_width), inner_width, theme))
         rem -= 3
 
-    # Dynamic Panel 2: Auxiliary Thermals (SODIMM, Charger, Video)
-    if rem >= 3:
-        aux_temps = get_auxiliary_thermals()
-        if aux_temps:
-            rows.append(div_double)
-            aux_left = f"{ELECTRIC_PURP}[ AUXILIARY THERMAL SENSORS ]{RESET}"
-            aux_right = f"{MUTED_GRAY}Subsystem: dell_ddv{RESET}"
-            rows.append(make_row(align_split(aux_left, aux_right, inner_width), inner_width))
+    # Dynamic Panel 2: Auxiliary Thermals (SODIMM, Charger)
+    if rem >= 3 and aux_temps:
+        rows.append(div_double)
+        aux_left = f"{theme.accent}[ AUXILIARY THERMAL SENSORS ]{RESET}"
+        aux_right = f"{MUTED_GRAY}Subsystem: dell_ddv{RESET}"
+        rows.append(make_row(align_split(aux_left, aux_right, inner_width), inner_width, theme))
 
-            sod1 = f"SODIMM 1: {WHITE_BOLD}{aux_temps.get('SODIMM', 39):.0f}°C{RESET}"
-            sod2 = f"SODIMM 2: {WHITE_BOLD}{aux_temps.get('SODIMM 2', 39):.0f}°C{RESET}"
-            chg = f"Charger: {WHITE_BOLD}{aux_temps.get('Charger', 37):.0f}°C{RESET}"
-            rows.append(make_row(align_three(sod1, sod2, chg, inner_width), inner_width))
-            rem -= 3
+        sod1 = f"SODIMM 1: {WHITE_BOLD}{aux_temps.get('SODIMM', 39):.0f}°C{RESET}"
+        sod2 = f"SODIMM 2: {WHITE_BOLD}{aux_temps.get('SODIMM 2', 39):.0f}°C{RESET}"
+        chg = f"Charger: {WHITE_BOLD}{aux_temps.get('Charger', 37):.0f}°C{RESET}"
+        rows.append(make_row(align_three(sod1, sod2, chg, inner_width), inner_width, theme))
+        rem -= 3
 
     # Dynamic Panel 3: Memory Subsystem & Swap
     if rem >= 3:
         mem_avail, mem_cached, swap_used, swap_total = get_memory_breakdown()
         rows.append(div_double)
-        mem_left = f"{CYAN_BRIGHT}[ MEMORY SUBSYSTEM & SWAP ]{RESET}"
+        mem_left = f"{theme.accent}[ MEMORY SUBSYSTEM & SWAP ]{RESET}"
         mem_right = f"{MUTED_GRAY}Available: {mem_avail:.1f} GB{RESET}"
-        rows.append(make_row(align_split(mem_left, mem_right, inner_width), inner_width))
+        rows.append(make_row(align_split(mem_left, mem_right, inner_width), inner_width, theme))
 
         swap_pct = (swap_used / swap_total * 100) if swap_total > 0 else 0.0
-        gauge_swap = render_gauge(swap_pct, 100, gauge_width, [
-            (0.0, (0, 235, 255)),
-            (0.5, (180, 100, 255)),
-            (1.0, (255, 45, 75))
-        ])
-        swap_val = f"{CYAN_BRIGHT}{swap_pct:5.1f}%{RESET}"
+        gauge_swap = render_gauge(swap_pct, 100, gauge_width, theme.stops_cool, theme)
+        swap_val = f"{theme.accent_bright}{swap_pct:5.1f}%{RESET}"
         swap_mid = f"Used:  {WHITE_BOLD}{swap_used:4.1f} GB{RESET}"
         swap_right = f"{MUTED_GRAY}Total: {swap_total:4.1f} GB{RESET}"
         rows.append(format_telemetry_line(f"{WHITE_BOLD}SWAP FILE{RESET}", gauge_swap, swap_val, swap_mid, swap_right, inner_width, gauge_width))
         rem -= 3
 
-    # Distribute any remaining spacing rows evenly across panels so the frame fills the terminal symmetrically
     if rem > 0:
         div_indices = [i for i, r in enumerate(rows) if "╠" in r and i > 2]
         if div_indices:
             for i in range(rem):
                 target_div = div_indices[i % len(div_indices)]
-                rows.insert(target_div, make_row("", inner_width))
+                rows.insert(target_div, make_row("", inner_width, theme))
                 div_indices = [d + 1 if d >= target_div else d for d in div_indices]
         else:
             while rem > 0:
-                rows.append(make_row("", inner_width))
+                rows.append(make_row("", inner_width, theme))
                 rem -= 1
 
-    # Compact terminal handling: if term_rows was smaller than base content
     if rem < 0:
-        # If short on space, drop hotkey row from footer
         if len(footer_rows) > 5 and rem <= -1:
-            footer_rows.pop(1) # remove hk_left
-            footer_rows.pop(1) # remove div_single
+            footer_rows.pop(1)
+            footer_rows.pop(1)
             rem += 2
         while rem < 0 and len(rows) > 12:
             rows.pop()
             rem += 1
 
     rows.extend(footer_rows)
-
     return "\n".join(rows)
 
-def run_snapshot():
+def run_snapshot(theme=None):
+    if theme is None:
+        theme = get_current_theme()
     aw_hwmon = get_hwmon()
     max1, max2 = get_fan_max(aw_hwmon)
-    _, _, cpu_usage, cpu_mhz, cpu_temp = get_cpu_info(0, 0)
+    _, _, cpu_usage, cpu_mhz, cpu_temp, rapl_watts, _, _ = get_cpu_info(0, 0)
     gpu = get_gpu_info()
     b1, b2, r1, r2, fans = get_fans(aw_hwmon)
 
@@ -1028,11 +1187,13 @@ def run_snapshot():
         pass
 
     ac_online, bat_pct, bat_status = get_power_info()
-    frame = build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status, max1, max2, fans=fans)
+    frame = build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile,
+                                mem_used, mem_total, ac_online, bat_pct, bat_status,
+                                max1, max2, fans=fans, rapl_watts=rapl_watts, theme=theme)
     print(frame)
 
 def run_continuous():
-    global NEEDS_RESIZE
+    global NEEDS_RESIZE, LAST_STATUS_MSG, LAST_STATUS_IS_ERROR, LAST_STATUS_TIMESTAMP
     import termios
     import tty
 
@@ -1051,7 +1212,6 @@ def run_continuous():
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_term)
             except Exception:
                 pass
-        # Leave alternate screen buffer, restore cursor, reset attributes
         sys.stdout.write("\033[?1049l\033[?25h" + RESET + "\n")
         sys.stdout.flush()
 
@@ -1067,26 +1227,22 @@ def run_continuous():
     signal.signal(signal.SIGTERM, sig_handler)
     signal.signal(signal.SIGWINCH, on_winch)
 
-    # Enter alternate screen buffer (\033[?1049h), DISABLE alternate scroll mode (\033[?1007l),
-    # hide cursor (\033[?25l), clear screen (\033[2J), home cursor (\033[H)
     sys.stdout.write("\033[?1049h\033[?1007l\033[?25l\033[2J\033[H")
     sys.stdout.flush()
 
     prev_total, prev_idle = 0.0, 0.0
+    prev_rapl_uj, prev_rapl_time = 0, 0.0
     aw_hwmon = get_hwmon()
     needs_quick_redraw = False
 
     try:
         while True:
-            # Handle terminal resize immediately
             if NEEDS_RESIZE:
                 NEEDS_RESIZE = False
                 sys.stdout.write("\033[2J\033[H")
                 sys.stdout.flush()
 
-            # Event-driven non-blocking key wait: wakes up IMMEDIATELY (<1ms) on keypress,
-            # or times out after 0.75s (or 0.08s for quick transition) to refresh telemetry
-            timeout = 0.08 if needs_quick_redraw else 0.75
+            timeout = 0.05 if needs_quick_redraw else 0.75
             needs_quick_redraw = False
 
             if fd is not None:
@@ -1111,14 +1267,21 @@ def run_continuous():
                     elif action == 'F9':
                         toggle_gameshift_direct(aw_hwmon)
                         needs_quick_redraw = True
+                    elif action == 'THEME':
+                        t = cycle_next_theme()
+                        LAST_STATUS_MSG = f"Color Grading Theme: {t.name}"
+                        LAST_STATUS_IS_ERROR = False
+                        LAST_STATUS_TIMESTAMP = time.time()
+                        needs_quick_redraw = True
                     elif action == 'REFRESH':
                         needs_quick_redraw = True
             else:
                 time.sleep(0.75)
 
-            # Telemetry collection
             max1, max2 = get_fan_max(aw_hwmon)
-            prev_total, prev_idle, cpu_usage, cpu_mhz, cpu_temp = get_cpu_info(prev_total, prev_idle)
+            prev_total, prev_idle, cpu_usage, cpu_mhz, cpu_temp, rapl_watts, prev_rapl_uj, prev_rapl_time = get_cpu_info(
+                prev_total, prev_idle, prev_rapl_uj, prev_rapl_time
+            )
             gpu = get_gpu_info()
             b1, b2, r1, r2, fans = get_fans(aw_hwmon)
 
@@ -1144,9 +1307,10 @@ def run_continuous():
 
             ac_online, bat_pct, bat_status = get_power_info()
 
-            frame = build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile, mem_used, mem_total, ac_online, bat_pct, bat_status, max1, max2, fans=fans)
+            frame = build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profile,
+                                        mem_used, mem_total, ac_online, bat_pct, bat_status,
+                                        max1, max2, fans=fans, rapl_watts=rapl_watts)
 
-            # Move cursor to home (1,1) and draw frame without flickering
             sys.stdout.write("\033[H" + frame)
             sys.stdout.flush()
 
@@ -1158,6 +1322,14 @@ if __name__ == "__main__":
         idx = sys.argv.index("--sysfs-root")
         if idx + 1 < len(sys.argv):
             SYSFS_ROOT = sys.argv[idx + 1]
+
+    if "--theme" in sys.argv:
+        idx = sys.argv.index("--theme")
+        if idx + 1 < len(sys.argv):
+            req_theme = sys.argv[idx + 1].lower()
+            if req_theme in THEMES:
+                CURRENT_THEME_KEY = req_theme
+                save_persisted_theme(req_theme)
 
     if "--snapshot" in sys.argv or "-s" in sys.argv:
         run_snapshot()

@@ -2,7 +2,8 @@ use crate::capabilities::HardwareCapabilities;
 use crate::error::AwccError;
 use crate::providers::{HardwareProvider, ProviderMatch, ProviderRegistry};
 use crate::telemetry::{
-    FanTelemetry, GModeStatus, SystemTelemetry, ThermalSensor, ThermalTelemetry,
+    CpuComputeTelemetry, FanTelemetry, GModeStatus, GpuComputeTelemetry, MemoryTelemetry,
+    PowerTelemetry, SystemTelemetry, ThermalSensor, ThermalTelemetry,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -500,6 +501,299 @@ impl HardwareManager {
         GModeStatus::NotExposed
     }
 
+    pub fn read_cpu_compute_telemetry(&self) -> Option<CpuComputeTelemetry> {
+        let cpuinfo_path = self.sysfs_root.join("proc/cpuinfo");
+        let content = fs::read_to_string(&cpuinfo_path)
+            .or_else(|_| fs::read_to_string("/proc/cpuinfo"))
+            .ok()?;
+
+        let mut model_name = "CPU".to_string();
+        let mut core_count = 0;
+        let mut mhz_sum = 0.0;
+        let mut mhz_count = 0;
+
+        for line in content.lines() {
+            if line.starts_with("model name") {
+                if let Some(pos) = line.find(':') {
+                    if model_name == "CPU" {
+                        let raw = line[pos + 1..].trim();
+                        let cleaned = raw
+                            .replace("(R)", "")
+                            .replace("(TM)", "")
+                            .replace("Processor", "")
+                            .replace("CPU", "")
+                            .trim()
+                            .to_string();
+
+                        if let Some(idx) = cleaned
+                            .find("i3-")
+                            .or_else(|| cleaned.find("i5-"))
+                            .or_else(|| cleaned.find("i7-"))
+                            .or_else(|| cleaned.find("i9-"))
+                            .or_else(|| cleaned.find("Ultra "))
+                            .or_else(|| cleaned.find("Ryzen "))
+                        {
+                            let part = &cleaned[idx..];
+                            let words: Vec<&str> = part.split_whitespace().collect();
+                            if !words.is_empty() {
+                                if words[0].starts_with("Ryzen") && words.len() >= 3 {
+                                    model_name = format!("{} {} {}", words[0], words[1], words[2]);
+                                } else {
+                                    model_name = words[0].to_string();
+                                }
+                            } else {
+                                model_name = cleaned;
+                            }
+                        } else {
+                            let words: Vec<&str> = cleaned.split_whitespace().collect();
+                            if words.len() >= 2 {
+                                model_name = format!("{} {}", words[0], words[1]);
+                            } else {
+                                model_name = cleaned;
+                            }
+                        }
+                    }
+                }
+            } else if line.starts_with("processor") {
+                core_count += 1;
+            } else if line.starts_with("cpu MHz") {
+                if let Some(pos) = line.find(':') {
+                    if let Ok(v) = line[pos + 1..].trim().parse::<f32>() {
+                        mhz_sum += v;
+                        mhz_count += 1;
+                    }
+                }
+            }
+        }
+
+        let cur_freq_mhz = if mhz_count > 0 {
+            Some(mhz_sum / mhz_count as f32)
+        } else {
+            None
+        };
+
+        let max_freq_path = self
+            .sysfs_root
+            .join("sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq");
+        let max_freq_mhz = fs::read_to_string(&max_freq_path)
+            .ok()
+            .and_then(|s| s.trim().parse::<f32>().ok())
+            .map(|khz| khz / 1000.0);
+
+        let gov_path = self
+            .sysfs_root
+            .join("sys/devices/system/cpu/cpu0/cpufreq/scaling_governor");
+        let scaling_governor = fs::read_to_string(&gov_path)
+            .ok()
+            .map(|s| s.trim().to_string());
+
+        let epp_path = self
+            .sysfs_root
+            .join("sys/devices/system/cpu/cpu0/cpufreq/energy_perf_preference");
+        let energy_perf_preference = fs::read_to_string(&epp_path)
+            .ok()
+            .map(|s| s.trim().to_string());
+
+        let stat_path = self.sysfs_root.join("proc/stat");
+        let usage_percent = fs::read_to_string(&stat_path)
+            .or_else(|_| fs::read_to_string("/proc/stat"))
+            .ok()
+            .and_then(|s| {
+                let first_line = s.lines().next()?;
+                let parts: Vec<&str> = first_line.split_whitespace().collect();
+                if parts.len() >= 5 && parts[0] == "cpu" {
+                    let user: f64 = parts[1].parse().ok()?;
+                    let nice: f64 = parts[2].parse().ok()?;
+                    let system: f64 = parts[3].parse().ok()?;
+                    let idle: f64 = parts[4].parse().ok()?;
+                    let iowait: f64 = parts.get(5).and_then(|p| p.parse().ok()).unwrap_or(0.0);
+                    let irq: f64 = parts.get(6).and_then(|p| p.parse().ok()).unwrap_or(0.0);
+                    let softirq: f64 = parts.get(7).and_then(|p| p.parse().ok()).unwrap_or(0.0);
+                    let total = user + nice + system + idle + iowait + irq + softirq;
+                    let active = total - (idle + iowait);
+                    if total > 0.0 {
+                        Some(((active / total) * 100.0) as f32)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            });
+
+        let rapl_energy_path = self
+            .sysfs_root
+            .join("sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj");
+        let package_power_watts = if let Ok(s1) = fs::read_to_string(&rapl_energy_path) {
+            if let Ok(uj1) = s1.trim().parse::<u64>() {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                if let Ok(s2) = fs::read_to_string(&rapl_energy_path) {
+                    if let Ok(uj2) = s2.trim().parse::<u64>() {
+                        let diff_uj = uj2.saturating_sub(uj1);
+                        Some(diff_uj as f32 / 50_000.0)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Some(CpuComputeTelemetry {
+            model_name,
+            cores_logical: if core_count > 0 { core_count } else { 1 },
+            cur_freq_mhz,
+            max_freq_mhz,
+            scaling_governor,
+            energy_perf_preference,
+            usage_percent,
+            package_power_watts,
+        })
+    }
+
+    pub fn read_gpu_compute_telemetry(&self) -> Option<GpuComputeTelemetry> {
+        let output = Command::new("nvidia-smi")
+            .args([
+                "--query-gpu=name,utilization.gpu,clocks.current.graphics,clocks.current.memory,memory.used,memory.total,power.draw.average,power.draw.instant,enforced.power.limit",
+                "--format=csv,noheader,nounits",
+            ])
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let line = stdout.lines().next()?;
+        let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+        if parts.is_empty() {
+            return None;
+        }
+
+        let raw_name = parts[0];
+        let model_name = raw_name
+            .replace("NVIDIA GeForce ", "")
+            .replace(" Laptop GPU", "")
+            .trim()
+            .to_string();
+
+        let utilization_gpu_percent = parts.get(1).and_then(|p| p.parse::<u32>().ok());
+        let core_clock_mhz = parts.get(2).and_then(|p| p.parse::<u32>().ok());
+        let memory_clock_mhz = parts.get(3).and_then(|p| p.parse::<u32>().ok());
+        let memory_used_mb = parts.get(4).and_then(|p| p.parse::<u64>().ok());
+        let memory_total_mb = parts.get(5).and_then(|p| p.parse::<u64>().ok());
+
+        let power_draw_watts = parts
+            .get(6)
+            .and_then(|p| p.parse::<f32>().ok())
+            .filter(|&w| w < 200.0)
+            .or_else(|| {
+                parts
+                    .get(7)
+                    .and_then(|p| p.parse::<f32>().ok())
+                    .filter(|&w| w < 200.0)
+            });
+
+        let power_limit_watts = parts.get(8).and_then(|p| p.parse::<f32>().ok());
+
+        Some(GpuComputeTelemetry {
+            model_name: Some(model_name),
+            core_clock_mhz,
+            memory_clock_mhz,
+            utilization_gpu_percent,
+            memory_used_mb,
+            memory_total_mb,
+            power_draw_watts,
+            power_limit_watts,
+        })
+    }
+
+    pub fn read_memory_telemetry(&self) -> Option<MemoryTelemetry> {
+        let meminfo_path = self.sysfs_root.join("proc/meminfo");
+        let content = fs::read_to_string(&meminfo_path)
+            .or_else(|_| fs::read_to_string("/proc/meminfo"))
+            .ok()?;
+
+        let mut total_kb: Option<u64> = None;
+        let mut avail_kb: Option<u64> = None;
+        let mut swap_total_kb: Option<u64> = None;
+        let mut swap_free_kb: Option<u64> = None;
+
+        for line in content.lines() {
+            if line.starts_with("MemTotal:") {
+                total_kb = line.split_whitespace().nth(1).and_then(|s| s.parse().ok());
+            } else if line.starts_with("MemAvailable:") {
+                avail_kb = line.split_whitespace().nth(1).and_then(|s| s.parse().ok());
+            } else if line.starts_with("SwapTotal:") {
+                swap_total_kb = line.split_whitespace().nth(1).and_then(|s| s.parse().ok());
+            } else if line.starts_with("SwapFree:") {
+                swap_free_kb = line.split_whitespace().nth(1).and_then(|s| s.parse().ok());
+            }
+        }
+
+        let ram_total_mb = total_kb.map(|kb| kb / 1024).unwrap_or(0);
+        let ram_avail_mb = avail_kb.map(|kb| kb / 1024).unwrap_or(0);
+        let ram_used_mb = ram_total_mb.saturating_sub(ram_avail_mb);
+        let ram_used_percent = if ram_total_mb > 0 {
+            (ram_used_mb as f32 / ram_total_mb as f32) * 100.0
+        } else {
+            0.0
+        };
+
+        let swap_total_mb = swap_total_kb.map(|kb| kb / 1024).unwrap_or(0);
+        let swap_free_mb = swap_free_kb.map(|kb| kb / 1024).unwrap_or(0);
+        let swap_used_mb = swap_total_mb.saturating_sub(swap_free_mb);
+
+        Some(MemoryTelemetry {
+            ram_used_mb,
+            ram_total_mb,
+            ram_used_percent,
+            swap_used_mb,
+            swap_total_mb,
+        })
+    }
+
+    pub fn read_power_telemetry(&self) -> Option<PowerTelemetry> {
+        let ac_path = self.sysfs_root.join("sys/class/power_supply/AC/online");
+        let ac_online = fs::read_to_string(&ac_path)
+            .ok()
+            .map(|s| s.trim() == "1")
+            .unwrap_or(true);
+
+        let bat_cap_path = self
+            .sysfs_root
+            .join("sys/class/power_supply/BAT0/capacity");
+        let battery_percent = fs::read_to_string(&bat_cap_path)
+            .ok()
+            .and_then(|s| s.trim().parse::<f32>().ok());
+
+        let bat_status_path = self.sysfs_root.join("sys/class/power_supply/BAT0/status");
+        let battery_status = fs::read_to_string(&bat_status_path)
+            .ok()
+            .map(|s| s.trim().to_string());
+
+        let power_now_path = self
+            .sysfs_root
+            .join("sys/class/power_supply/BAT0/power_now");
+        let charge_rate_watts = fs::read_to_string(&power_now_path)
+            .ok()
+            .and_then(|s| s.trim().parse::<f32>().ok())
+            .map(|u| u / 1_000_000.0);
+
+        Some(PowerTelemetry {
+            ac_online,
+            battery_percent,
+            battery_status,
+            charge_rate_watts,
+        })
+    }
+
     pub fn get_telemetry(&self) -> SystemTelemetry {
         let (dmi_vendor, dmi_product, bios_version) = self.get_dmi_info();
         let (active_platform_profile, platform_profile_choices, platform_profile_provider) =
@@ -507,6 +801,10 @@ impl HardwareManager {
         let gmode_status = self.check_gmode_status();
         let thermals = self.read_thermal_telemetry();
         let fans = self.discover_fans();
+        let cpu = self.read_cpu_compute_telemetry();
+        let gpu = self.read_gpu_compute_telemetry();
+        let memory = self.read_memory_telemetry();
+        let power = self.read_power_telemetry();
 
         SystemTelemetry {
             dmi_vendor,
@@ -526,6 +824,10 @@ impl HardwareManager {
                 .map(|p| p.display().to_string()),
             thermals,
             fans,
+            cpu,
+            gpu,
+            memory,
+            power,
         }
     }
 
