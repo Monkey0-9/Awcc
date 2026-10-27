@@ -6,10 +6,98 @@ use crate::telemetry::{
     PowerTelemetry, SystemTelemetry, ThermalSensor, ThermalTelemetry,
 };
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::Instant;
+
+/// Canonical 5-tier performance and thermal modes with gradual 20% fan boost increments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum PerformanceMode {
+    /// 20% Fan Boost (51/255) + Quiet ACPI Platform Profile (~1,000-1,500 RPM)
+    Battery,
+    /// 40% Fan Boost (102/255) + Quiet ACPI Platform Profile (~2,000-2,500 RPM)
+    Quiet,
+    /// 60% Fan Boost (153/255) + Balanced ACPI Platform Profile (~3,000-3,500 RPM)
+    Balanced,
+    /// 80% Fan Boost (204/255) + Performance ACPI Platform Profile (~4,000-4,500 RPM)
+    Performance,
+    /// 100% Fan Boost (255/255 Max RPM) + Performance ACPI Platform Profile + Game Shift
+    Ultra,
+}
+
+impl PerformanceMode {
+    /// Fan boost level (0-255). Increases in 20% increments (51) to 255 (max RPM).
+    pub fn target_boost(&self) -> u8 {
+        match self {
+            Self::Battery => 51,      // 20% of 255
+            Self::Quiet => 102,       // 40% of 255
+            Self::Balanced => 153,    // 60% of 255
+            Self::Performance => 204, // 80% of 255
+            Self::Ultra => 255,       // 100% of 255 (Max Boost)
+        }
+    }
+
+    /// Boost percentage (20%, 40%, 60%, 80%, 100%).
+    pub fn boost_percentage(&self) -> u8 {
+        match self {
+            Self::Battery => 20,
+            Self::Quiet => 40,
+            Self::Balanced => 60,
+            Self::Performance => 80,
+            Self::Ultra => 100,
+        }
+    }
+
+    /// Underlying Linux ACPI platform profile name.
+    pub fn acpi_profile(&self) -> &'static str {
+        match self {
+            Self::Battery => "quiet",
+            Self::Quiet => "quiet",
+            Self::Balanced => "balanced",
+            Self::Performance => "performance",
+            Self::Ultra => "performance",
+        }
+    }
+
+    /// Human-friendly display label.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Battery => "Battery Saver",
+            Self::Quiet => "Quiet",
+            Self::Balanced => "Balanced",
+            Self::Performance => "Performance",
+            Self::Ultra => "Ultra Performance",
+        }
+    }
+
+    /// Parse case-insensitive string into a PerformanceMode variant.
+    pub fn parse_mode(s: &str) -> Option<Self> {
+        let cleaned = s.trim().to_lowercase().replace(['-', '_', ' '], "");
+        match cleaned.as_str() {
+            "battery" | "bat" | "powersave" | "low" | "1" => Some(Self::Battery),
+            "quiet" | "silent" | "2" => Some(Self::Quiet),
+            "balanced" | "balance" | "normal" | "3" => Some(Self::Balanced),
+            "performance" | "perf" | "high" | "4" | "5" => Some(Self::Performance),
+            "ultra" | "gmode" | "max" | "6" => Some(Self::Ultra),
+            _ => None,
+        }
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(s: &str) -> Option<Self> {
+        Self::parse_mode(s)
+    }
+}
+
+impl std::str::FromStr for PerformanceMode {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse_mode(s).ok_or(())
+    }
+}
 
 pub struct HardwareManager {
     sysfs_root: PathBuf,
@@ -51,7 +139,7 @@ impl HardwareManager {
     }
 
     pub fn is_driver_loaded(&self) -> bool {
-        self.alienware_hwmon.is_some()
+        self.alienware_hwmon.is_some() || Self::find_alienware_hwmon(&self.sysfs_root).is_some()
     }
 
     pub fn sysfs_root(&self) -> &Path {
@@ -67,6 +155,10 @@ impl HardwareManager {
         Option<PathBuf>,
     ) {
         Self::discover_hwmon_nodes_at(&self.sysfs_root)
+    }
+
+    pub fn find_alienware_hwmon(sysfs_root: &Path) -> Option<PathBuf> {
+        Self::discover_hwmon_nodes_at(sysfs_root).0
     }
 
     pub fn discover_hwmon_nodes_at(
@@ -197,26 +289,88 @@ impl HardwareManager {
             .map(|s| s.split_whitespace().map(|x| x.to_string()).collect())
             .unwrap_or_default();
 
-        if !choices.is_empty() && !choices.iter().any(|c| c == requested) {
+        let req_lower = requested.to_lowercase();
+        let effective_target: &str = match req_lower.trim() {
+            "battery" | "bat" | "powersave" => {
+                if choices.iter().any(|c| c == "low-power") {
+                    "low-power"
+                } else if choices.iter().any(|c| c == "cool") {
+                    "cool"
+                } else {
+                    "quiet"
+                }
+            }
+            "ultra" => "performance",
+            "balance" => "balanced",
+            "high" | "perf" => "performance",
+            "silent" => "quiet",
+            _ => requested,
+        };
+
+        let target = if !choices.is_empty() && choices.iter().any(|c| c == requested) {
+            requested
+        } else if choices.is_empty() || choices.iter().any(|c| c == effective_target) {
+            effective_target
+        } else {
             return Err(AwccError::InvalidProfile {
                 requested: requested.to_string(),
                 available: choices,
             });
-        }
+        };
 
-        if let Err(e) = fs::write(&prof_file, requested) {
+        if let Err(e) = fs::write(&prof_file, target) {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
+                // Try passwordless sudo tee if configured in sudoers
+                if let Ok(mut c) = Command::new("sudo")
+                    .args(["-n", "tee", prof_file.to_str().unwrap_or("")])
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                {
+                    if let Some(mut stdin) = c.stdin.take() {
+                        let _ = stdin.write_all(target.as_bytes());
+                    }
+                    if c.wait().map(|s| s.success()).unwrap_or(false) {
+                        let readback = fs::read_to_string(&prof_file)
+                            .map(|s| s.trim().to_string())
+                            .unwrap_or_default();
+                        if readback == target {
+                            return Ok(());
+                        }
+                    }
+                }
+
                 // Try fallback to /sys/firmware/acpi/platform_profile if it exists and is writable
                 let acpi_fallback = self.sysfs_root.join("sys/firmware/acpi/platform_profile");
-                if acpi_fallback.exists()
-                    && acpi_fallback != prof_file
-                    && fs::write(&acpi_fallback, requested).is_ok()
-                {
-                    let readback = fs::read_to_string(&acpi_fallback)
-                        .map(|s| s.trim().to_string())
-                        .unwrap_or_default();
-                    if readback == requested {
-                        return Ok(());
+                if acpi_fallback.exists() && acpi_fallback != prof_file {
+                    if fs::write(&acpi_fallback, target).is_ok() {
+                        let readback = fs::read_to_string(&acpi_fallback)
+                            .map(|s| s.trim().to_string())
+                            .unwrap_or_default();
+                        if readback == target {
+                            return Ok(());
+                        }
+                    }
+
+                    if let Ok(mut c) = Command::new("sudo")
+                        .args(["-n", "tee", acpi_fallback.to_str().unwrap_or("")])
+                        .stdin(std::process::Stdio::piped())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn()
+                    {
+                        if let Some(mut stdin) = c.stdin.take() {
+                            let _ = stdin.write_all(target.as_bytes());
+                        }
+                        if c.wait().map(|s| s.success()).unwrap_or(false) {
+                            let readback = fs::read_to_string(&acpi_fallback)
+                                .map(|s| s.trim().to_string())
+                                .unwrap_or_default();
+                            if readback == target {
+                                return Ok(());
+                            }
+                        }
                     }
                 }
 
@@ -236,7 +390,7 @@ impl HardwareManager {
             .map(|s| s.trim().to_string())
             .unwrap_or_default();
 
-        if readback != requested {
+        if readback != target {
             return Err(AwccError::ProfileReadbackMismatch {
                 requested: requested.to_string(),
                 readback,
@@ -441,7 +595,16 @@ impl HardwareManager {
 
     pub fn discover_fans(&self) -> Vec<FanTelemetry> {
         let mut fans = Vec::new();
-        if let Some(ref aw) = self.alienware_hwmon {
+        let aw_buf;
+        let aw_opt = match self.alienware_hwmon.as_ref() {
+            Some(aw) => Some(aw),
+            None => {
+                aw_buf = Self::find_alienware_hwmon(&self.sysfs_root);
+                aw_buf.as_ref()
+            }
+        };
+
+        if let Some(aw) = aw_opt {
             for fan_index in 1..=6 {
                 let boost_path = aw.join(format!("fan{}_boost", fan_index));
                 let input_path = aw.join(format!("fan{}_input", fan_index));
@@ -492,6 +655,56 @@ impl HardwareManager {
                 });
             }
         }
+
+        // Fallback to dell_smm hwmon tachometers if alienware_wmi is not loaded
+        if fans.is_empty() {
+            if let Some(ref smm) = self.dell_smm_hwmon {
+                for fan_index in 1..=6 {
+                    let input_path = smm.join(format!("fan{}_input", fan_index));
+                    if !input_path.exists() {
+                        continue;
+                    }
+                    let label = fs::read_to_string(smm.join(format!("fan{}_label", fan_index)))
+                        .map(|s| s.trim().to_string())
+                        .unwrap_or_else(|_| {
+                            if fan_index == 1 {
+                                "CPU Fan".to_string()
+                            } else if fan_index == 2 {
+                                "GPU Fan".to_string()
+                            } else {
+                                format!("Fan {}", fan_index)
+                            }
+                        });
+                    let current_rpm = fs::read_to_string(&input_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u32>().ok());
+                    let min_path = smm.join(format!("fan{}_min", fan_index));
+                    let reported_min_rpm = fs::read_to_string(&min_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u32>().ok());
+                    let max_path = smm.join(format!("fan{}_max", fan_index));
+                    let reported_max_rpm = fs::read_to_string(&max_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u32>().ok());
+                    let pwm_path = smm.join(format!("pwm{}", fan_index));
+                    let pwm_val = fs::read_to_string(&pwm_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u8>().ok());
+
+                    fans.push(FanTelemetry {
+                        fan_index,
+                        label,
+                        requested_boost: pwm_val.unwrap_or(0),
+                        readback_boost: pwm_val,
+                        current_rpm,
+                        reported_min_rpm,
+                        reported_max_rpm,
+                        provider: "dell_smm".to_string(),
+                    });
+                }
+            }
+        }
+
         fans
     }
 
@@ -504,14 +717,27 @@ impl HardwareManager {
                 }
             }
         }
+        if let Some(ref smm) = self.dell_smm_hwmon {
+            let p = smm.join(format!("fan{}_input", fan_index));
+            if let Ok(s) = fs::read_to_string(&p) {
+                if let Ok(val) = s.trim().parse::<u32>() {
+                    return Some(val);
+                }
+            }
+        }
         None
     }
 
     pub fn read_fan_boost(&self, fan_index: u8) -> Result<u8, AwccError> {
-        let aw = self
-            .alienware_hwmon
-            .as_ref()
-            .ok_or(AwccError::DriverNotFound)?;
+        let aw_buf;
+        let aw = match self.alienware_hwmon.as_ref() {
+            Some(aw) => aw,
+            None => {
+                aw_buf = Self::find_alienware_hwmon(&self.sysfs_root)
+                    .ok_or(AwccError::DriverNotFound)?;
+                &aw_buf
+            }
+        };
         let path = aw.join(format!("fan{}_boost", fan_index));
         let content = fs::read_to_string(&path).map_err(|e| {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
@@ -536,28 +762,50 @@ impl HardwareManager {
     }
 
     pub fn write_fan_boost(&self, fan_index: u8, boost: u8) -> Result<(), AwccError> {
-        let aw = self
-            .alienware_hwmon
-            .as_ref()
-            .ok_or(AwccError::DriverNotFound)?;
+        let aw_buf;
+        let aw = match self.alienware_hwmon.as_ref() {
+            Some(aw) => aw,
+            None => {
+                aw_buf = Self::find_alienware_hwmon(&self.sysfs_root)
+                    .ok_or(AwccError::DriverNotFound)?;
+                &aw_buf
+            }
+        };
         let path = aw.join(format!("fan{}_boost", fan_index));
 
         if !path.exists() {
             return Err(AwccError::InvalidFanIndex(fan_index));
         }
 
-        fs::write(&path, boost.to_string()).map_err(|e| {
+        if let Err(e) = fs::write(&path, boost.to_string()) {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
-                AwccError::PermissionDenied {
-                    path: path.display().to_string(),
+                if let Ok(mut c) = Command::new("sudo")
+                    .args(["-n", "tee", path.to_str().unwrap_or("")])
+                    .stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                {
+                    if let Some(mut stdin) = c.stdin.take() {
+                        let _ = stdin.write_all(boost.to_string().as_bytes());
+                    }
+                    if !c.wait().map(|s| s.success()).unwrap_or(false) {
+                        return Err(AwccError::PermissionDenied {
+                            path: path.display().to_string(),
+                        });
+                    }
+                } else {
+                    return Err(AwccError::PermissionDenied {
+                        path: path.display().to_string(),
+                    });
                 }
             } else {
-                AwccError::Io {
+                return Err(AwccError::Io {
                     path: path.display().to_string(),
                     source: e,
-                }
+                });
             }
-        })?;
+        }
 
         let readback = self.read_fan_boost(fan_index)?;
         let verified = if boost == 255 {
@@ -1006,6 +1254,27 @@ impl HardwareManager {
 
     pub fn best_provider(&self) -> Option<(&dyn HardwareProvider, ProviderMatch)> {
         self.registry.find_best_provider(&self.sysfs_root)
+    }
+
+    pub fn set_performance_mode(&self, mode: PerformanceMode) -> Result<(), AwccError> {
+        let pprof = mode.acpi_profile();
+        self.set_platform_profile(pprof)?;
+
+        let boost = mode.target_boost();
+        let fans = self.discover_fans();
+        for f in &fans {
+            let _ = self.set_fan_level(f.fan_index, boost);
+        }
+
+        // Synchronize Dell Game Shift state file
+        let state_file = Path::new("/tmp/.awcc_gmode_state");
+        if mode == PerformanceMode::Ultra {
+            let _ = fs::write(state_file, "ON\n");
+        } else {
+            let _ = fs::write(state_file, "OFF\n");
+        }
+
+        Ok(())
     }
 
     pub fn set_fan_level(&self, fan_index: u8, level: u8) -> Result<(), AwccError> {

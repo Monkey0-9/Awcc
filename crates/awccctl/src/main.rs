@@ -1,5 +1,5 @@
 use awcc_core::capabilities::{FanControlCapability, VerificationTier};
-use awcc_core::HardwareManager;
+use awcc_core::{AwccError, HardwareManager, PerformanceMode};
 use clap::{Parser, Subcommand};
 use colored::*;
 use signal_hook::{consts::TERM_SIGNALS, iterator::Signals};
@@ -73,7 +73,7 @@ enum Commands {
         cli: bool,
     },
 
-    /// Set platform profile (e.g. performance, balanced, quiet, cool, custom)
+    /// Set platform profile (e.g. battery, quiet, balanced, performance, ultra, cool)
     Profile {
         /// Profile name
         name: String,
@@ -85,6 +85,90 @@ enum Commands {
         /// Refresh interval in seconds for monitor mode
         #[arg(short, long, default_value_t = 1.0)]
         interval: f64,
+
+        /// Output single-shot snapshot after setting profile
+        #[arg(short, long)]
+        snapshot: bool,
+    },
+
+    /// Battery Saver profile: Quiet platform profile + 20% fan boost (51/255)
+    #[command(alias = "bat", alias = "powersave")]
+    Battery {
+        /// Continuously monitor live hardware performance, thermals, and fan speeds until stopped
+        #[arg(short, long, alias = "watch")]
+        monitor: bool,
+
+        /// Refresh interval in seconds for monitor mode
+        #[arg(short, long, default_value_t = 1.0)]
+        interval: f64,
+
+        /// Output single-shot snapshot after setting profile
+        #[arg(short, long)]
+        snapshot: bool,
+    },
+
+    /// Quiet profile: Acoustic silence + 40% fan boost (102/255)
+    #[command(alias = "silent")]
+    Quiet {
+        /// Continuously monitor live hardware performance, thermals, and fan speeds until stopped
+        #[arg(short, long, alias = "watch")]
+        monitor: bool,
+
+        /// Refresh interval in seconds for monitor mode
+        #[arg(short, long, default_value_t = 1.0)]
+        interval: f64,
+
+        /// Output single-shot snapshot after setting profile
+        #[arg(short, long)]
+        snapshot: bool,
+    },
+
+    /// Balanced profile: Daily productivity + 60% fan boost (153/255)
+    #[command(alias = "balance", alias = "normal")]
+    Balanced {
+        /// Continuously monitor live hardware performance, thermals, and fan speeds until stopped
+        #[arg(short, long, alias = "watch")]
+        monitor: bool,
+
+        /// Refresh interval in seconds for monitor mode
+        #[arg(short, long, default_value_t = 1.0)]
+        interval: f64,
+
+        /// Output single-shot snapshot after setting profile
+        #[arg(short, long)]
+        snapshot: bool,
+    },
+
+    /// Performance profile: High workload + 80% fan boost (204/255)
+    #[command(alias = "high", alias = "perf")]
+    Performance {
+        /// Continuously monitor live hardware performance, thermals, and fan speeds until stopped
+        #[arg(short, long, alias = "watch")]
+        monitor: bool,
+
+        /// Refresh interval in seconds for monitor mode
+        #[arg(short, long, default_value_t = 1.0)]
+        interval: f64,
+
+        /// Output single-shot snapshot after setting profile
+        #[arg(short, long)]
+        snapshot: bool,
+    },
+
+    /// Ultra profile: Maximum cooling & Game Shift + 100% fan boost (255/255 Max RPM)
+    #[command(alias = "max")]
+    Ultra {
+        /// Continuously monitor live hardware performance, thermals, and fan speeds until stopped
+        #[arg(short, long, alias = "watch")]
+        monitor: bool,
+
+        /// Refresh interval in seconds for monitor mode
+        #[arg(short, long, default_value_t = 1.0)]
+        interval: f64,
+
+        /// Output single-shot snapshot after setting profile
+        #[arg(short, long)]
+        snapshot: bool,
     },
 
     /// Toggle or query Dell Game Shift / Ultra Performance G-Mode
@@ -171,7 +255,33 @@ fn main() {
             name,
             monitor,
             interval,
-        } => cmd_profile(&hw, &name, monitor, interval),
+            snapshot,
+        } => cmd_profile(&hw, &name, monitor, interval, snapshot),
+        Commands::Battery {
+            monitor,
+            interval,
+            snapshot,
+        } => cmd_profile(&hw, "battery", monitor, interval, snapshot),
+        Commands::Quiet {
+            monitor,
+            interval,
+            snapshot,
+        } => cmd_profile(&hw, "quiet", monitor, interval, snapshot),
+        Commands::Balanced {
+            monitor,
+            interval,
+            snapshot,
+        } => cmd_profile(&hw, "balanced", monitor, interval, snapshot),
+        Commands::Performance {
+            monitor,
+            interval,
+            snapshot,
+        } => cmd_profile(&hw, "performance", monitor, interval, snapshot),
+        Commands::Ultra {
+            monitor,
+            interval,
+            snapshot,
+        } => cmd_profile(&hw, "ultra", monitor, interval, snapshot),
         Commands::Gmode {
             state,
             monitor,
@@ -667,8 +777,8 @@ fn run_live_watch_loop(hw: &HardwareManager, json: bool, interval: f64) {
     });
 
     if !json {
-        // Hide cursor and clear screen once initially
-        print!("\x1b[?25l\x1b[2J\x1b[H");
+        // Switch to alternate screen buffer, hide cursor, and clear screen once initially
+        print!("\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H");
         io::stdout().flush().ok();
     }
 
@@ -683,12 +793,20 @@ fn run_live_watch_loop(hw: &HardwareManager, json: bool, interval: f64) {
             print!("\x1b[J");
             io::stdout().flush().ok();
         }
-        sleep(interval_dur);
+
+        // Granular sleep to immediately respond to Ctrl+C signal
+        let chunk = Duration::from_millis(50);
+        let mut elapsed = Duration::ZERO;
+        while elapsed < interval_dur && !term.load(Ordering::SeqCst) {
+            sleep(chunk);
+            elapsed += chunk;
+        }
     }
 
     if !json {
-        // Restore cursor and clear formatting on clean exit
-        println!("\x1b[?25h\x1b[0m");
+        // Leave alternate screen buffer, restore cursor and formatting on clean exit
+        print!("\x1b[?1049l\x1b[?25h\x1b[0m");
+        io::stdout().flush().ok();
         println!("{}", "[+] Live monitoring stopped.".green().bold());
         io::stdout().flush().ok();
     }
@@ -710,16 +828,98 @@ fn cmd_track(hw: &HardwareManager, json: bool, interval: f64, once: bool) {
     run_live_watch_loop(hw, json, interval);
 }
 
-fn cmd_profile(hw: &HardwareManager, profile: &str, monitor: bool, interval: f64) {
-    let target = if profile.to_lowercase() == "ultra" {
-        println!("[*] Ultra profile requested: Setting performance mode...");
-        "performance"
-    } else {
-        profile
-    };
+fn cmd_profile(hw: &HardwareManager, profile: &str, monitor: bool, interval: f64, snapshot: bool) {
+    if let Some(mode) = PerformanceMode::from_str(profile) {
+        let pprof = mode.acpi_profile();
+        let boost = mode.target_boost();
+        let pct = mode.boost_percentage();
 
-    println!("[*] Setting platform profile to '{}'...", target);
-    if let Err(e) = hw.set_platform_profile(target) {
+        println!(
+            "[*] Actuating {}: Profile '{}' + Fan Boost {}/255 ({}% Max RPM)...",
+            mode.display_name().bold().cyan(),
+            pprof.green(),
+            boost.to_string().yellow(),
+            pct
+        );
+
+        if let Err(e) = hw.set_platform_profile(pprof) {
+            eprintln!(
+                "{} Failed to set platform profile: {}",
+                "[-] Error:".bold().red(),
+                e
+            );
+            std::process::exit(1);
+        }
+
+        // Fan actuation
+        let fans = hw.discover_fans();
+        let mut actuated = false;
+        for f in &fans {
+            if let Err(e) = hw.set_fan_level(f.fan_index, boost) {
+                if let AwccError::PermissionDenied { .. } = e {
+                    eprintln!(
+                        "{} Setting fan boost requires root privileges.",
+                        "[-] Notice:".yellow()
+                    );
+                    break;
+                }
+            } else {
+                actuated = true;
+            }
+        }
+
+        // Synchronize Dell Game Shift state file
+        let state_file = Path::new("/tmp/.awcc_gmode_state");
+        if mode == PerformanceMode::Ultra {
+            let _ = fs::write(state_file, "ON\n");
+        } else {
+            let _ = fs::write(state_file, "OFF\n");
+        }
+
+        if actuated {
+            println!(
+                "{} {} active (Profile: '{}', Fan Boost: {}/255 [{}%])",
+                "[+] Success:".bold().green(),
+                mode.display_name(),
+                pprof,
+                boost,
+                pct
+            );
+        } else {
+            let caps = hw.capabilities();
+            if caps.active_provider_name == "dell_awcc"
+                && caps.fan_control == FanControlCapability::None
+            {
+                println!(
+                    "{} Platform profile set to '{}'. Hardware fan boost (0-255) requires alienware-wmi module.\n    Run 'sudo ./bin/load-driver.sh' or 'sudo awccctl {}' to actuate fan boost ladder.",
+                    "[+] Success:".bold().green(),
+                    pprof,
+                    profile
+                );
+            } else {
+                println!(
+                    "{} Platform profile set to '{}'",
+                    "[+] Success:".bold().green(),
+                    pprof
+                );
+            }
+        }
+
+        if snapshot {
+            render_status_snapshot(hw, false);
+            return;
+        }
+
+        if monitor {
+            println!("[*] Entering live hardware monitoring (Press Ctrl+C to stop)...");
+            sleep(Duration::from_millis(300));
+            run_live_watch_loop(hw, false, interval);
+        }
+        return;
+    }
+
+    println!("[*] Setting platform profile to '{}'...", profile);
+    if let Err(e) = hw.set_platform_profile(profile) {
         eprintln!(
             "{} Failed to set platform profile: {}",
             "[-] Error:".bold().red(),
@@ -730,8 +930,13 @@ fn cmd_profile(hw: &HardwareManager, profile: &str, monitor: bool, interval: f64
     println!(
         "{} Platform profile set to '{}'",
         "[+] Success:".bold().green(),
-        target
+        profile
     );
+
+    if snapshot {
+        render_status_snapshot(hw, false);
+        return;
+    }
 
     if monitor {
         println!("[*] Entering live hardware monitoring (Press Ctrl+C to stop)...");

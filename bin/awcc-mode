@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Clean terminal restoration trap
 cleanup() {
-    printf "\x1b[?25h\x1b[0m" 2>/dev/null || true
+    printf "\x1b[?1049l\x1b[?25h\x1b[0m" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM HUP
 
@@ -31,7 +31,8 @@ if [[ -z "${PPROF_FILE}" ]] && [[ -f /sys/firmware/acpi/platform_profile ]]; the
     PPROF_FILE="/sys/firmware/acpi/platform_profile"
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+REAL_SOURCE="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd -P "$(dirname "${REAL_SOURCE}")" >/dev/null 2>&1 && pwd)"
 ROOT_DIR="$(dirname "${SCRIPT_DIR}")"
 DASHBOARD_SCRIPT=""
 for candidate in \
@@ -61,17 +62,78 @@ else
     DISPLAY_MACHINE="${CLEAN_VENDOR} ${PRODUCT}"
 fi
 
+ensure_alienware_driver() {
+    # If already found, return success
+    if [[ -n "${AW_HWMON}" ]]; then
+        return 0
+    fi
+
+    # Only attempt on Dell / Alienware hardware
+    if ! echo "${DISPLAY_MACHINE}" | grep -qiE "Dell|Alienware"; then
+        return 0
+    fi
+
+    local MODULE_KO=""
+    for cand in \
+        "${ROOT_DIR}/kernel/alienware-wmi.ko" \
+        "/home/unknownuser/Awcc/kernel/alienware-wmi.ko" \
+        "${HOME}/Awcc/kernel/alienware-wmi.ko" \
+        "/lib/modules/$(uname -r)/extra/alienware-wmi.ko"; do
+        if [[ -f "$cand" ]]; then
+            MODULE_KO="$cand"
+            break
+        fi
+    done
+
+    echo "[*] Notice: alienware_wmi driver is not loaded. Loading kernel module..."
+
+    # 1. Try modprobe if installed in /lib/modules
+    if sudo -n modprobe alienware-wmi 2>/dev/null || { [[ -t 0 && -t 1 && -z "${AWCC_NONINTERACTIVE:-}" ]] && sudo modprobe alienware-wmi 2>/dev/null; }; then
+        :
+    # 2. Try insmod with candidate module file
+    elif [[ -n "${MODULE_KO}" ]]; then
+        if sudo -n insmod "${MODULE_KO}" 2>/dev/null || { [[ -t 0 && -t 1 && -z "${AWCC_NONINTERACTIVE:-}" ]] && sudo insmod "${MODULE_KO}"; }; then
+            :
+        fi
+    fi
+
+    # Re-discover hwmon
+    for d in /sys/class/hwmon/hwmon*; do
+        if [[ -f "$d/name" ]] && [[ "$(cat "$d/name" 2>/dev/null)" == "alienware_wmi" ]]; then
+            AW_HWMON="$d"
+            echo "[+] alienware-wmi module loaded successfully ($d)."
+            break
+        fi
+    done
+
+    # Re-discover platform-profile
+    for p in /sys/class/platform-profile/platform-profile-*; do
+        if [[ -f "$p/name" ]] && [[ "$(cat "$p/name" 2>/dev/null)" == "alienware-wmi" ]]; then
+            PPROF_FILE="$p/profile"
+            break
+        fi
+    done
+    if [[ -z "${PPROF_FILE}" ]] && [[ -f /sys/firmware/acpi/platform_profile ]]; then
+        PPROF_FILE="/sys/firmware/acpi/platform_profile"
+    fi
+
+    if [[ -n "${AW_HWMON}" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 # Help documentation
-if [[ "${MODE}" == "--help" ]] || [[ "${MODE}" == "-h" ]]; then
+if [[ "${MODE}" == "--help" ]] || [[ "${MODE}" == "-h" ]] || [[ "${FLAG}" == "--help" ]] || [[ "${FLAG}" == "-h" ]]; then
     echo "Usage: awcc-mode [MODE] [OPTIONS]"
     echo ""
-    echo "Modes:"
-    echo "  1 | battery      Silent Whisper (~1,000 RPM, 10/255 Boost)"
-    echo "  2 | quiet        Acoustic Silence (~1,450 RPM, 20/255 Boost)"
-    echo "  3 | balance      Daily Productivity (~1,980 RPM, 40/255 Boost)"
-    echo "  4 | mid          Intermediate Performance (~3,100 RPM, 65/255 Boost)"
-    echo "  5 | high         High Performance (~4,200 RPM, 85/255 Boost)"
-    echo "  6 | ultra        Ultra Performance & Game Shift (255/255 Max Boost)"
+    echo "Modes (20% Fan Boost Ladder up to 255 Max RPM):"
+    echo "  1 | battery      Battery Saver (20% Boost, 51/255, ~1,500 RPM)"
+    echo "  2 | quiet        Acoustic Silence (40% Boost, 102/255, ~2,200 RPM)"
+    echo "  3 | balanced     Daily Productivity (60% Boost, 153/255, ~3,100 RPM)"
+    echo "  4 | performance  High Performance (80% Boost, 204/255, ~4,200 RPM)"
+    echo "  5 | ultra        Ultra Performance & Game Shift (100% Boost, 255/255 Max RPM)"
     echo ""
     echo "Options:"
     echo "  --once, -s       Print single status snapshot and exit (no live monitoring)"
@@ -93,38 +155,33 @@ if [[ -z "${MODE}" ]] || [[ "${MODE}" =~ ^- ]] || [[ "${MODE,,}" == "monitor" ]]
 fi
 
 case "${MODE,,}" in
-    1|battery|powersave|low)
+    1|battery|powersave|low|bat)
         PROFILE="quiet"
-        BOOST=10
-        TITLE="BATTERY SAVER (Silent Whisper, Boost 10/255, ~1,000 RPM)"
+        BOOST=51
+        TITLE="BATTERY SAVER (20% Fan Boost 51/255, ~1,500 RPM)"
         ;;
     2|quiet|silent)
         PROFILE="quiet"
-        BOOST=20
-        TITLE="QUIET (Acoustic Silence, Boost 20/255, ~1,450 RPM)"
+        BOOST=102
+        TITLE="QUIET (40% Fan Boost 102/255, ~2,200 RPM)"
         ;;
-    3|balance|balanced)
+    3|balance|balanced|normal)
         PROFILE="balanced"
-        BOOST=40
-        TITLE="BALANCE (Daily Productivity, Boost 40/255, ~1,980 RPM)"
+        BOOST=153
+        TITLE="BALANCED (60% Fan Boost 153/255, ~3,100 RPM)"
         ;;
-    4|mid)
+    4|performance|high|perf|mid)
         PROFILE="performance"
-        BOOST=65
-        TITLE="MID (Intermediate Performance, Boost 65/255, ~3,100 RPM)"
+        BOOST=204
+        TITLE="PERFORMANCE (80% Fan Boost 204/255, ~4,200 RPM)"
         ;;
-    5|high|performance)
-        PROFILE="performance"
-        BOOST=85
-        TITLE="HIGH PERFORMANCE (Sustained Workloads, Boost 85/255, ~4,200 RPM)"
-        ;;
-    6|ultra|gmode|g-mode|max|255)
+    5|ultra|gmode|g-mode|max|255|6)
         PROFILE="performance"
         BOOST=255
-        TITLE="ULTRA PERFORMANCE & GAME SHIFT (G-MODE Max Fans, Boost 255/255)"
+        TITLE="ULTRA PERFORMANCE & GAME SHIFT (100% Max Fans 255/255)"
         ;;
     *)
-        echo "[-] Unknown mode '${MODE}'. Choose from: 1-6 or battery, quiet, balance, mid, high, ultra." >&2
+        echo "[-] Unknown mode '${MODE}'. Choose from: 1-5 or battery, quiet, balanced, performance, ultra." >&2
         exit 1
         ;;
 esac
@@ -134,29 +191,52 @@ echo " AWCC Linux: Actuating ${TITLE}"
 echo " Target Machine: ${DISPLAY_MACHINE}"
 echo "=========================================================================="
 
+# Ensure alienware-wmi is loaded if on Dell/Alienware hardware
+ensure_alienware_driver || true
+
 # 1. Apply Platform Profile
 echo "[1/3] Setting Platform Profile to '${PROFILE}'..."
 if [[ -n "${PPROF_FILE}" ]]; then
     if [[ -w "${PPROF_FILE}" ]]; then
         echo "${PROFILE}" > "${PPROF_FILE}"
-    elif command -v sudo >/dev/null 2>&1; then
+    elif echo "${PROFILE}" | sudo -n tee "${PPROF_FILE}" >/dev/null 2>&1; then
+        :
+    elif [[ -t 0 && -t 1 ]] && command -v sudo >/dev/null 2>&1 && [[ -z "${AWCC_NONINTERACTIVE:-}" ]]; then
         echo "${PROFILE}" | sudo tee "${PPROF_FILE}" >/dev/null
     else
-        echo "[-] Warning: Unable to write platform profile (root/sudo required)." >&2
+        echo "[-] Notice: Writing platform profile requires root privileges." >&2
+        echo "    Tip: Run with 'sudo awcc-mode ${MODE}' or configure passwordless sudo via 'sudo ./bin/setup-sudoers.sh'." >&2
     fi
 fi
 
-# 2. Apply Fan Boost
+# 2. Apply Fan Boost & Game Shift
 echo "[2/3] Setting Fan Boost to ${BOOST}/255..."
+if [[ -z "${AW_HWMON}" ]]; then
+    ensure_alienware_driver || true
+fi
+
 if [[ -n "${AW_HWMON}" ]]; then
+    # Actuate hardware fan boost offsets (0-255)
     if [[ -w "${AW_HWMON}/fan1_boost" ]]; then
         echo "${BOOST}" > "${AW_HWMON}/fan1_boost"
         echo "${BOOST}" > "${AW_HWMON}/fan2_boost"
-    elif command -v sudo >/dev/null 2>&1; then
+    elif echo "${BOOST}" | sudo -n tee "${AW_HWMON}/fan1_boost" "${AW_HWMON}/fan2_boost" >/dev/null 2>&1; then
+        :
+    elif [[ -t 0 && -t 1 ]] && command -v sudo >/dev/null 2>&1 && [[ -z "${AWCC_NONINTERACTIVE:-}" ]]; then
         echo "${BOOST}" | sudo tee "${AW_HWMON}/fan1_boost" "${AW_HWMON}/fan2_boost" >/dev/null
     else
-        echo "[-] Error: Writing fan boost requires root/sudo." >&2
-        exit 1
+        echo "[-] Notice: Writing fan boost requires root privileges." >&2
+        echo "    Tip: Run with 'sudo awcc-mode ${MODE}' or configure passwordless sudo via 'sudo ./bin/setup-sudoers.sh'." >&2
+    fi
+
+    # Actuate Game Shift toggle if exposed by alienware-wmi
+    if [[ -f "${AW_HWMON}/gmode" ]]; then
+        G_TARGET=$([[ "${BOOST}" -eq 255 ]] && echo 1 || echo 0)
+        if [[ -w "${AW_HWMON}/gmode" ]]; then
+            echo "${G_TARGET}" > "${AW_HWMON}/gmode" 2>/dev/null || true
+        elif sudo -n tee "${AW_HWMON}/gmode" >/dev/null 2>&1 <<< "${G_TARGET}"; then
+            :
+        fi
     fi
 
     READ_B1="$(cat "${AW_HWMON}/fan1_boost" 2>/dev/null || echo '?')"
@@ -167,6 +247,9 @@ if [[ -n "${AW_HWMON}" ]]; then
         echo "[-] Error: Fan boost readback mismatch: requested ${BOOST}, got Fan 1: ${READ_B1}, Fan 2: ${READ_B2}" >&2
         exit 1
     fi
+else
+    echo "[-] Notice: alienware_wmi driver not loaded (hardware fan boost node absent)."
+    echo "    Run 'sudo ./bin/load-driver.sh' to actuate fan boost offset."
 fi
 
 # 3. Synchronize Game Shift State File

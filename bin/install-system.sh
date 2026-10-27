@@ -106,7 +106,9 @@ echo "[4/7] Installing system binaries and management utilities to /usr/local/bi
 BIN_MAP=(
     "bin/awcc-battery:/usr/local/bin/awcc-battery"
     "bin/awcc-quiet:/usr/local/bin/awcc-quiet"
+    "bin/awcc-balanced:/usr/local/bin/awcc-balanced"
     "bin/awcc-balance:/usr/local/bin/awcc-balance"
+    "bin/awcc-performance:/usr/local/bin/awcc-performance"
     "bin/awcc-mid:/usr/local/bin/awcc-mid"
     "bin/awcc-high:/usr/local/bin/awcc-high"
     "bin/awcc-ultra:/usr/local/bin/awcc-ultra"

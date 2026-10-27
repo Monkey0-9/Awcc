@@ -303,14 +303,36 @@ impl HardwareProvider for GenericLinuxProvider {
             .map(|s| s.split_whitespace().map(|x| x.to_string()).collect())
             .unwrap_or_default();
 
-        if !choices.is_empty() && !choices.iter().any(|c| c == requested) {
+        let req_lower = requested.to_lowercase();
+        let effective_target: &str = match req_lower.trim() {
+            "battery" | "bat" | "powersave" => {
+                if choices.iter().any(|c| c == "low-power") {
+                    "low-power"
+                } else if choices.iter().any(|c| c == "cool") {
+                    "cool"
+                } else {
+                    "quiet"
+                }
+            }
+            "ultra" => "performance",
+            "balance" => "balanced",
+            "high" | "perf" => "performance",
+            "silent" => "quiet",
+            _ => requested,
+        };
+
+        let target = if !choices.is_empty() && choices.iter().any(|c| c == requested) {
+            requested
+        } else if choices.is_empty() || choices.iter().any(|c| c == effective_target) {
+            effective_target
+        } else {
             return Err(AwccError::InvalidProfile {
                 requested: requested.to_string(),
                 available: choices,
             });
-        }
+        };
 
-        fs::write(&prof_file, requested).map_err(|e| {
+        fs::write(&prof_file, target).map_err(|e| {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
                 AwccError::PermissionDenied {
                     path: prof_file.display().to_string(),
@@ -327,7 +349,7 @@ impl HardwareProvider for GenericLinuxProvider {
             .map(|s| s.trim().to_string())
             .unwrap_or_default();
 
-        if readback != requested {
+        if readback != target {
             return Err(AwccError::ProfileReadbackMismatch {
                 requested: requested.to_string(),
                 readback,

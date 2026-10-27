@@ -412,6 +412,55 @@ impl HardwareProvider for DellAwccProvider {
             }
         }
 
+        // Fallback to dell_smm hwmon tachometers if alienware_wmi is not loaded
+        if fans.is_empty() {
+            if let Some(ref smm) = dell_smm_hwmon {
+                for fan_index in 1..=6 {
+                    let input_path = smm.join(format!("fan{}_input", fan_index));
+                    if !input_path.exists() {
+                        continue;
+                    }
+                    let label = fs::read_to_string(smm.join(format!("fan{}_label", fan_index)))
+                        .map(|s| s.trim().to_string())
+                        .unwrap_or_else(|_| {
+                            if fan_index == 1 {
+                                "CPU Fan".to_string()
+                            } else if fan_index == 2 {
+                                "GPU Fan".to_string()
+                            } else {
+                                format!("Fan {}", fan_index)
+                            }
+                        });
+                    let current_rpm = fs::read_to_string(&input_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u32>().ok());
+                    let min_path = smm.join(format!("fan{}_min", fan_index));
+                    let reported_min_rpm = fs::read_to_string(&min_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u32>().ok());
+                    let max_path = smm.join(format!("fan{}_max", fan_index));
+                    let reported_max_rpm = fs::read_to_string(&max_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u32>().ok());
+                    let pwm_path = smm.join(format!("pwm{}", fan_index));
+                    let pwm_val = fs::read_to_string(&pwm_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u8>().ok());
+
+                    fans.push(FanTelemetry {
+                        fan_index,
+                        label,
+                        requested_boost: pwm_val.unwrap_or(0),
+                        readback_boost: pwm_val,
+                        current_rpm,
+                        reported_min_rpm,
+                        reported_max_rpm,
+                        provider: "dell_smm".to_string(),
+                    });
+                }
+            }
+        }
+
         // 6. Platform Profile & GMode
         let (active_platform_profile, platform_profile_choices, platform_profile_provider) =
             if let Some((node, provider)) = Self::find_platform_profile_node(sysfs) {
@@ -501,14 +550,36 @@ impl HardwareProvider for DellAwccProvider {
             .map(|s| s.split_whitespace().map(|x| x.to_string()).collect())
             .unwrap_or_default();
 
-        if !choices.is_empty() && !choices.iter().any(|c| c == requested) {
+        let req_lower = requested.to_lowercase();
+        let effective_target: &str = match req_lower.trim() {
+            "battery" | "bat" | "powersave" => {
+                if choices.iter().any(|c| c == "low-power") {
+                    "low-power"
+                } else if choices.iter().any(|c| c == "cool") {
+                    "cool"
+                } else {
+                    "quiet"
+                }
+            }
+            "ultra" => "performance",
+            "balance" => "balanced",
+            "high" | "perf" => "performance",
+            "silent" => "quiet",
+            _ => requested,
+        };
+
+        let target = if !choices.is_empty() && choices.iter().any(|c| c == requested) {
+            requested
+        } else if choices.is_empty() || choices.iter().any(|c| c == effective_target) {
+            effective_target
+        } else {
             return Err(AwccError::InvalidProfile {
                 requested: requested.to_string(),
                 available: choices,
             });
-        }
+        };
 
-        fs::write(&prof_file, requested).map_err(|e| {
+        fs::write(&prof_file, target).map_err(|e| {
             if e.kind() == std::io::ErrorKind::PermissionDenied {
                 AwccError::PermissionDenied {
                     path: prof_file.display().to_string(),
@@ -525,7 +596,7 @@ impl HardwareProvider for DellAwccProvider {
             .map(|s| s.trim().to_string())
             .unwrap_or_default();
 
-        if readback != requested {
+        if readback != target {
             return Err(AwccError::ProfileReadbackMismatch {
                 requested: requested.to_string(),
                 readback,

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+PROFILE="$(basename "$0" | sed 's/^awcc-//')"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+if [[ -x "${SCRIPT_DIR}/awcc-mode" ]]; then
+    exec "${SCRIPT_DIR}/awcc-mode" "${PROFILE}" "$@"
+elif [[ -x "${SCRIPT_DIR}/awcc-mode.sh" ]]; then
+    exec "${SCRIPT_DIR}/awcc-mode.sh" "${PROFILE}" "$@"
+elif command -v awcc-mode >/dev/null 2>&1; then
+    exec awcc-mode "${PROFILE}" "$@"
+else
+    echo "[-] Error: awcc-mode not found in PATH or bin directory." >&2
+    exit 1
+fi

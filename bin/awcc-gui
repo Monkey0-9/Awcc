@@ -242,20 +242,27 @@ class AwccApp(Adw.Application):
         profile_box.set_halign(Gtk.Align.CENTER)
 
         cur_prof = self.telemetry.get("active_platform_profile", "balanced").lower()
+        fans = self.telemetry.get("fans", [])
+        cur_boost = fans[0].get("readback_boost", 0) if fans else 0
+        if cur_boost is None:
+            cur_boost = 0
         gmode = self.is_gmode_active()
-        if gmode:
+        if gmode or cur_boost >= 240:
             active_btn_name = "ultra"
         elif cur_prof in ["performance", "balanced-performance"]:
             active_btn_name = "performance"
         elif cur_prof == "quiet":
-            active_btn_name = "quiet"
+            if 0 < cur_boost <= 75:
+                active_btn_name = "battery"
+            else:
+                active_btn_name = "quiet"
         else:
             active_btn_name = "balanced"
 
         self.profile_buttons = {}
-        for p in ["Quiet", "Balanced", "Performance", "Ultra"]:
+        for p in ["Battery", "Quiet", "Balanced", "Performance", "Ultra"]:
             btn = Gtk.Button(label=p)
-            btn.set_size_request(120, 42)
+            btn.set_size_request(100, 42)
             if p.lower() == active_btn_name:
                 btn.add_css_class("suggested-action")
                 if p.lower() == "ultra":
@@ -606,13 +613,19 @@ class AwccApp(Adw.Application):
 
         # Synchronize profile highlight
         cur_prof = self.telemetry.get("active_platform_profile", "balanced").lower()
+        cur_boost = fans[0].get("readback_boost", 0) if fans else 0
+        if cur_boost is None:
+            cur_boost = 0
         gmode = self.is_gmode_active()
-        if gmode:
+        if gmode or cur_boost >= 240:
             active_btn_name = "ultra"
         elif cur_prof in ["performance", "balanced-performance"]:
             active_btn_name = "performance"
         elif cur_prof == "quiet":
-            active_btn_name = "quiet"
+            if 0 < cur_boost <= 75:
+                active_btn_name = "battery"
+            else:
+                active_btn_name = "quiet"
         else:
             active_btn_name = "balanced"
 
@@ -660,7 +673,7 @@ class AwccApp(Adw.Application):
             if self.is_gmode_active():
                 self.run_privileged([self.ctl, "gmode", "off"])
             res = self.run_privileged([self.ctl, "profile", profile_name])
-            boost_map = {"quiet": 20, "balanced": 40, "performance": 85}
+            boost_map = {"battery": 51, "quiet": 102, "balanced": 153, "performance": 204}
             if profile_name in boost_map:
                 b = boost_map[profile_name]
                 for f in self.telemetry.get("fans", []):

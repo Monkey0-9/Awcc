@@ -5,14 +5,25 @@ echo "================================================================="
 echo " AWCC Linux: Actuating Maximum Fan RPM (Dell G15 5530)"
 echo "================================================================="
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-MODULE="${REPO_DIR}/kernel/alienware-wmi.ko"
+REAL_SOURCE="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd -P "$(dirname "${REAL_SOURCE}")" >/dev/null 2>&1 && pwd)"
+REPO_DIR="$(dirname "${SCRIPT_DIR}")"
+MODULE=""
+for cand in \
+    "${REPO_DIR}/kernel/alienware-wmi.ko" \
+    "/home/unknownuser/Awcc/kernel/alienware-wmi.ko" \
+    "${HOME}/Awcc/kernel/alienware-wmi.ko" \
+    "/lib/modules/$(uname -r)/extra/alienware-wmi.ko"; do
+    if [[ -f "$cand" ]]; then
+        MODULE="$cand"
+        break
+    fi
+done
 
 # 1. Check if driver is loaded, if not try insmod
 if ! lsmod | grep -q "alienware_wmi"; then
     echo "[*] alienware-wmi driver not yet active in kernel."
-    if [[ -f "${MODULE}" ]]; then
+    if [[ -n "${MODULE}" && -f "${MODULE}" ]]; then
         echo "[*] Attempting to load ${MODULE}..."
         if [[ $EUID -eq 0 ]]; then
             insmod "${MODULE}"
@@ -23,7 +34,7 @@ if ! lsmod | grep -q "alienware_wmi"; then
             }
         fi
     else
-        echo "[-] Error: ${MODULE} not found. Please build the driver in kernel/ first." >&2
+        echo "[-] Error: alienware-wmi.ko not found. Please build the driver in kernel/ first." >&2
         exit 1
     fi
 fi

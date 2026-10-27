@@ -801,12 +801,12 @@ def get_auxiliary_thermals():
 
 # Physical Hardware Profile Configurations
 MODE_DEFS = {
-    1: {"name": "battery", "profile": "quiet",       "boost": 10,  "label": "BATTERY SAVER",    "desc": "10% Boost (~1,000 RPM)"},
-    2: {"name": "quiet",   "profile": "quiet",       "boost": 20,  "label": "QUIET",            "desc": "20% Boost (~1,450 RPM)"},
-    3: {"name": "balance", "profile": "balanced",    "boost": 40,  "label": "BALANCE",          "desc": "40% Boost (~1,980 RPM)"},
-    4: {"name": "mid",     "profile": "performance", "boost": 65,  "label": "MID",              "desc": "65% Boost (~3,100 RPM)"},
-    5: {"name": "high",    "profile": "performance", "boost": 85,  "label": "HIGH PERFORMANCE", "desc": "85% Boost (~4,200 RPM)"},
-    6: {"name": "ultra",   "profile": "performance", "boost": 255, "label": "ULTRA / G-MODE",   "desc": "100% Boost (5,029 RPM)"},
+    1: {"name": "battery", "profile": "quiet",       "boost": 51,  "label": "BATTERY SAVER",    "desc": "20% Boost (~1,500 RPM)"},
+    2: {"name": "quiet",   "profile": "quiet",       "boost": 102, "label": "QUIET",            "desc": "40% Boost (~2,200 RPM)"},
+    3: {"name": "balance", "profile": "balanced",    "boost": 153, "label": "BALANCED",         "desc": "60% Boost (~3,100 RPM)"},
+    4: {"name": "perf",    "profile": "performance", "boost": 204, "label": "PERFORMANCE",      "desc": "80% Boost (~4,200 RPM)"},
+    5: {"name": "ultra",   "profile": "performance", "boost": 255, "label": "ULTRA / G-MODE",   "desc": "100% Boost (Max RPM)"},
+    6: {"name": "ultra",   "profile": "performance", "boost": 255, "label": "ULTRA / G-MODE",   "desc": "100% Boost (Max RPM)"},
 }
 
 LAST_STATUS_MSG = None
@@ -948,20 +948,17 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
     if b1 >= 240:
         mode_label = "ULTRA (100% Boost)"
         mode_color = ansi_rgb_fg(255, 45, 75, bold=True)
-    elif b1 >= 75:
-        mode_label = "HIGH (85% Boost)"
+    elif b1 >= 180:
+        mode_label = "PERFORMANCE (80% Boost)"
         mode_color = ansi_rgb_fg(255, 120, 0, bold=True)
-    elif b1 >= 50:
-        mode_label = "MID (65% Boost)"
-        mode_color = ansi_rgb_fg(255, 190, 0, bold=True)
-    elif b1 >= 30:
-        mode_label = "BALANCE (40% Boost)"
+    elif b1 >= 130:
+        mode_label = "BALANCED (60% Boost)"
         mode_color = theme.accent_bright
-    elif b1 >= 15:
-        mode_label = "QUIET (20% Boost)"
+    elif b1 >= 80:
+        mode_label = "QUIET (40% Boost)"
         mode_color = ansi_rgb_fg(0, 255, 170, bold=True)
     elif b1 > 0:
-        mode_label = "BATTERY (10% Boost)"
+        mode_label = "BATTERY (20% Boost)"
         mode_color = ansi_rgb_fg(180, 100, 255, bold=True)
     elif has_controllable_fans:
         mode_label = "PASSIVE (0% Boost)"
@@ -1129,25 +1126,22 @@ def build_cockpit_frame(cpu_usage, cpu_mhz, cpu_temp, gpu, b1, b2, r1, r2, profi
 
     active_idx = 3
     if b1 >= 240:
-        active_idx = 6
-    elif b1 >= 75:
         active_idx = 5
-    elif b1 >= 50:
+    elif b1 >= 180:
         active_idx = 4
-    elif b1 >= 30:
+    elif b1 >= 130:
         active_idx = 3
-    elif b1 >= 15:
+    elif b1 >= 80:
         active_idx = 2
     else:
         active_idx = 1
 
     mode_defs_list = [
-        (1, "Battery", "Bat", "\033[1;97;45m"),
-        (2, "Quiet",   "Qut", "\033[1;30;42m"),
-        (3, "Balance", "Bal", "\033[1;30;46m"),
-        (4, "Mid",     "Mid", "\033[1;30;43m"),
-        (5, "High",    "High", "\033[1;97;41m"),
-        (6, "Ultra",   "Ult", "\033[1;97;41m"),
+        (1, "Battery",     "Bat",  "\033[1;97;45m"),
+        (2, "Quiet",       "Qut",  "\033[1;30;42m"),
+        (3, "Balanced",    "Bal",  "\033[1;30;46m"),
+        (4, "Performance", "Perf", "\033[1;30;43m"),
+        (5, "Ultra",       "Ult",  "\033[1;97;41m"),
     ]
     mode_spans = []
     use_short = (inner_width < 70)

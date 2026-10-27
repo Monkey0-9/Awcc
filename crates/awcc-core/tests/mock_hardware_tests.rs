@@ -134,3 +134,71 @@ fn test_mock_sysfs_gmode_status_reporting() {
     fs::write(hw1.join("gmode"), "0\n").unwrap();
     assert_eq!(hw.check_gmode_status(), GModeStatus::Inactive);
 }
+
+#[test]
+fn test_mock_sysfs_profile_normalization() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+
+    let pp0 = root.join("sys/class/platform-profile/platform-profile-0");
+    fs::create_dir_all(&pp0).unwrap();
+    fs::write(pp0.join("name"), "dell-pc\n").unwrap();
+    fs::write(pp0.join("profile"), "balanced\n").unwrap();
+    fs::write(pp0.join("choices"), "cool quiet balanced performance\n").unwrap();
+
+    let hw = HardwareManager::with_sysfs_root(root.to_path_buf());
+
+    // "battery" should normalize to "cool" or "quiet"
+    hw.set_platform_profile("battery").unwrap();
+    let (cur, _, _) = hw.get_platform_profile();
+    assert!(cur == "cool" || cur == "quiet");
+
+    // "ultra" should normalize to "performance"
+    hw.set_platform_profile("ultra").unwrap();
+    let (cur, _, _) = hw.get_platform_profile();
+    assert_eq!(cur, "performance");
+
+    // "balance" should normalize to "balanced"
+    hw.set_platform_profile("balance").unwrap();
+    let (cur, _, _) = hw.get_platform_profile();
+    assert_eq!(cur, "balanced");
+}
+
+#[test]
+fn test_mock_sysfs_dell_smm_fan_fallback() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+
+    // Mock dell_smm at hwmon4 without alienware_wmi
+    let hw4 = root.join("sys/class/hwmon/hwmon4");
+    fs::create_dir_all(&hw4).unwrap();
+    fs::write(hw4.join("name"), "dell_smm\n").unwrap();
+    fs::write(hw4.join("fan1_label"), "Processor Fan\n").unwrap();
+    fs::write(hw4.join("fan1_input"), "2100\n").unwrap();
+    fs::write(hw4.join("fan1_max"), "3700\n").unwrap();
+    fs::write(hw4.join("pwm1"), "128\n").unwrap();
+
+    fs::write(hw4.join("fan2_label"), "Video Fan\n").unwrap();
+    fs::write(hw4.join("fan2_input"), "2400\n").unwrap();
+    fs::write(hw4.join("fan2_max"), "4000\n").unwrap();
+    fs::write(hw4.join("pwm2"), "128\n").unwrap();
+
+    let hw = HardwareManager::with_sysfs_root(root.to_path_buf());
+    let fans = hw.discover_fans();
+
+    assert_eq!(fans.len(), 2);
+    assert_eq!(fans[0].fan_index, 1);
+    assert_eq!(fans[0].label, "Processor Fan");
+    assert_eq!(fans[0].current_rpm, Some(2100));
+    assert_eq!(fans[0].reported_max_rpm, Some(3700));
+    assert_eq!(fans[0].provider, "dell_smm");
+
+    assert_eq!(fans[1].fan_index, 2);
+    assert_eq!(fans[1].label, "Video Fan");
+    assert_eq!(fans[1].current_rpm, Some(2400));
+    assert_eq!(fans[1].reported_max_rpm, Some(4000));
+    assert_eq!(fans[1].provider, "dell_smm");
+
+    assert_eq!(hw.read_fan_rpm(1), Some(2100));
+    assert_eq!(hw.read_fan_rpm(2), Some(2400));
+}

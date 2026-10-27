@@ -59,8 +59,8 @@ for mp in awccctl.1 awcc-lux-dashboard.1 awcc-mode.1; do
 done
 
 # 4. Sync profile actuation shortcuts
-echo "[4/4] Synchronizing mode shortcuts (awcc-quiet, awcc-balance, etc.)..."
-for profile in battery quiet balance mid high ultra; do
+echo "[4/4] Synchronizing mode shortcuts (awcc-battery, awcc-quiet, awcc-balanced, awcc-performance, awcc-ultra)..."
+for profile in battery quiet balanced balance performance mid high ultra; do
     SHORTCUT="${LOCAL_BIN}/awcc-${profile}"
     cat << 'EOF' > "${SHORTCUT}"
 #!/usr/bin/env bash
