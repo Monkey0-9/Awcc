@@ -193,6 +193,18 @@ if [[ -d /usr/share/polkit-1/actions ]] && [[ -f "${REPO_DIR}/packaging/io.githu
     chmod 0644 /usr/share/polkit-1/actions/io.github.monkey0_9.awcc.policy
 fi
 
+if [[ -f "${REPO_DIR}/packaging/90-awcc.rules" ]]; then
+    echo "[*] Installing PolicyKit rules..."
+    if [[ -d /etc/polkit-1/rules.d ]]; then
+        cp -f "${REPO_DIR}/packaging/90-awcc.rules" /etc/polkit-1/rules.d/90-awcc.rules
+        chmod 0644 /etc/polkit-1/rules.d/90-awcc.rules
+    fi
+    if [[ -d /usr/share/polkit-1/rules.d ]]; then
+        cp -f "${REPO_DIR}/packaging/90-awcc.rules" /usr/share/polkit-1/rules.d/90-awcc.rules
+        chmod 0644 /usr/share/polkit-1/rules.d/90-awcc.rules
+    fi
+fi
+
 if [[ -x "${REPO_DIR}/bin/setup-sudoers.sh" ]]; then
     echo "[*] Configuring sudoers rules..."
     "${REPO_DIR}/bin/setup-sudoers.sh" || true

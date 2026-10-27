@@ -204,11 +204,11 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum FanCommands {
-    /// Set boost on specified fan (0-255)
+    /// Set boost on specified fan (0-255), or all fans if omitted
     Set {
-        /// Fan index (1 for CPU, 2 for GPU)
+        /// Fan index (1 for CPU, 2 for GPU, or omit for all fans)
         #[arg(long)]
-        fan: u8,
+        fan: Option<u8>,
         /// Boost value (0 to 255)
         #[arg(long)]
         boost: u8,
@@ -1064,16 +1064,7 @@ fn cmd_gmode(hw: &HardwareManager, state: Option<String>, monitor: bool, interva
     }
 }
 
-fn cmd_fan_set(hw: &HardwareManager, fan: u8, boost: u8, monitor: bool) {
-    if !(1..=6).contains(&fan) {
-        eprintln!(
-            "{} Invalid fan index {}. Controllable fans are 1 to 6.",
-            "[-] Error:".bold().red(),
-            fan
-        );
-        std::process::exit(2);
-    }
-
+fn cmd_fan_set(hw: &HardwareManager, fan: Option<u8>, boost: u8, monitor: bool) {
     let caps = hw.capabilities();
     if matches!(caps.fan_control, FanControlCapability::None) {
         eprintln!(
@@ -1085,23 +1076,79 @@ fn cmd_fan_set(hw: &HardwareManager, fan: u8, boost: u8, monitor: bool) {
         std::process::exit(1);
     }
 
-    println!("[*] Setting Fan {} boost to {}/255...", fan, boost);
-    match hw.set_fan_level(fan, boost) {
-        Ok(()) => {
-            let rpm = hw
-                .read_fan_rpm(fan)
-                .map(|r| format!("{} RPM", r))
-                .unwrap_or_else(|| "N/A".to_string());
-            println!(
-                "{} Fan {} boost set and verified. Current RPM: {}",
-                "[+] Success:".bold().green(),
-                fan,
-                rpm
-            );
+    match fan {
+        Some(f) => {
+            if !(1..=6).contains(&f) {
+                eprintln!(
+                    "{} Invalid fan index {}. Controllable fans are 1 to 6.",
+                    "[-] Error:".bold().red(),
+                    f
+                );
+                std::process::exit(2);
+            }
+
+            println!("[*] Setting Fan {} boost to {}/255...", f, boost);
+            match hw.set_fan_level(f, boost) {
+                Ok(()) => {
+                    let rpm = hw
+                        .read_fan_rpm(f)
+                        .map(|r| format!("{} RPM", r))
+                        .unwrap_or_else(|| "N/A".to_string());
+                    println!(
+                        "{} Fan {} boost set and verified. Current RPM: {}",
+                        "[+] Success:".bold().green(),
+                        f,
+                        rpm
+                    );
+                }
+                Err(e) => {
+                    eprintln!(
+                        "{} Failed to set boost on fan {}: {}",
+                        "[-] Error:".bold().red(),
+                        f,
+                        e
+                    );
+                    std::process::exit(1);
+                }
+            }
         }
-        Err(e) => {
-            eprintln!("{} Failed to set boost: {}", "[-] Error:".bold().red(), e);
-            std::process::exit(1);
+        None => {
+            let fans = hw.discover_fans();
+            if fans.is_empty() {
+                eprintln!(
+                    "{} No controllable fans discovered.",
+                    "[-] Error:".bold().red()
+                );
+                std::process::exit(1);
+            }
+            println!("[*] Setting all fans boost to {}/255...", boost);
+            let mut failed = false;
+            for f in &fans {
+                if let Err(e) = hw.set_fan_level(f.fan_index, boost) {
+                    eprintln!(
+                        "{} Failed to set boost on fan {}: {}",
+                        "[-] Error:".bold().red(),
+                        f.fan_index,
+                        e
+                    );
+                    failed = true;
+                } else {
+                    let rpm = hw
+                        .read_fan_rpm(f.fan_index)
+                        .map(|r| format!("{} RPM", r))
+                        .unwrap_or_else(|| "N/A".to_string());
+                    println!(
+                        "{} Fan {} (boost {}/255) verified. Current RPM: {}",
+                        "[+] Success:".bold().green(),
+                        f.fan_index,
+                        boost,
+                        rpm
+                    );
+                }
+            }
+            if failed {
+                std::process::exit(1);
+            }
         }
     }
 

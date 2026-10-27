@@ -11,7 +11,6 @@ REPO_DIR="$(dirname "${SCRIPT_DIR}")"
 MODULE=""
 for cand in \
     "${REPO_DIR}/kernel/alienware-wmi.ko" \
-    "/home/unknownuser/Awcc/kernel/alienware-wmi.ko" \
     "${HOME}/Awcc/kernel/alienware-wmi.ko" \
     "/lib/modules/$(uname -r)/extra/alienware-wmi.ko"; do
     if [[ -f "$cand" ]]; then

@@ -1,0 +1,12 @@
+// ==============================================================================
+// AWCC Linux Polkit Rule: Passwordless Hardware Performance & Fan Control
+// Grants active desktop users and members of wheel/sudo permission to actuate
+// hardware profiles and cooling turbines without repeated authentication prompts.
+// ==============================================================================
+polkit.addRule(function(action, subject) {
+    if ((action.id == "io.github.monkey0_9.awcc.pkexec" ||
+         action.id == "io.github.monkey0_9.awcc.pkexec.local") &&
+        (subject.isInGroup("wheel") || subject.isInGroup("sudo") || subject.active)) {
+        return polkit.Result.YES;
+    }
+});

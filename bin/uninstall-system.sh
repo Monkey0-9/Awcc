@@ -64,7 +64,9 @@ BINS=(
     gmode
     awcc-battery
     awcc-quiet
+    awcc-balanced
     awcc-balance
+    awcc-performance
     awcc-mid
     awcc-high
     awcc-ultra
@@ -89,6 +91,9 @@ rm -f /usr/share/applications/awcc-gui.desktop
 rm -f /usr/local/share/applications/awcc-gui.desktop
 rm -f /usr/share/icons/hicolor/scalable/apps/awcc-gui.svg
 rm -f /usr/share/polkit-1/actions/io.github.monkey0_9.awcc.policy
+rm -f /etc/polkit-1/rules.d/90-awcc.rules
+rm -f /usr/share/polkit-1/rules.d/90-awcc.rules
+rm -f /etc/udev/rules.d/90-awcc-sysfs.rules
 rm -f /etc/sudoers.d/awcc-linux
 rm -f /usr/share/bash-completion/completions/awccctl
 rm -f /usr/share/zsh/site-functions/_awccctl

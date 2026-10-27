@@ -80,15 +80,14 @@ flowchart TD
 
 ---
 
-## Operational Modes Ladder
+## Operational Modes Ladder (Canonical 5-Tier 20% Increment System)
 
-| Mode | Shortcut | Platform Profile | Fan Boost | RPM Ceiling | Description |
+| Mode | Shortcut | Platform Profile | Fan Boost | RPM Range | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Battery Saver** | `awcc-battery` | `quiet` | `10/255` (~4%) | ~1,000 RPM | Silent whisper, restricts thermal headroom for maximum battery runtime |
-| **Quiet** | `awcc-quiet` | `quiet` | `20/255` (~8%) | ~1,450 RPM | Low-noise acoustic silence for study and office environments |
-| **Balance** | `awcc-balance` | `balanced` | `40/255` (~16%) | ~1,980 RPM | Daily productivity balance with moderate cooling |
-| **Mid** | `awcc-mid` | `performance` | `65/255` (~25%) | ~3,100 RPM | Sustained compilation, light gaming, content creation |
-| **High** | `awcc-high` | `performance` | `85/255` (~33%) | ~4,200 RPM | Heavy gaming and sustained computational workloads |
+| **Battery Saver** | `awcc-battery` | `quiet` | `51/255` (20%) | ~1,500 RPM | Silent whisper, restricts thermal headroom for maximum battery runtime |
+| **Quiet** | `awcc-quiet` | `quiet` | `102/255` (40%) | ~2,200 RPM | Low-noise acoustic silence for study and office environments |
+| **Balanced** | `awcc-balanced` / `awcc-balance` | `balanced` | `153/255` (60%) | ~3,100 RPM | Daily productivity balance with moderate cooling |
+| **Performance** | `awcc-performance` / `awcc-high` | `performance` | `204/255` (80%) | ~4,200 RPM | Heavy sustained gaming and computational workloads |
 | **Ultra (G-Mode)**| `awcc-ultra` / `rhel-performance` | `performance` | `255/255` (100%) | ~4,800\(en5,029 RPM | True maximum fan speed and peak performance headroom |
 
 ---

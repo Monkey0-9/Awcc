@@ -27,6 +27,7 @@ cp -f "${ROOT_DIR}/bin/awcc-mode.sh" "${LOCAL_BIN}/awcc-mode.sh"
 cp -f "${ROOT_DIR}/bin/awcc-track" "${LOCAL_BIN}/awcc-track"
 cp -f "${ROOT_DIR}/bin/awcc-monitor" "${LOCAL_BIN}/awcc-monitor"
 cp -f "${ROOT_DIR}/bin/awcc-gameshift-toggle.sh" "${LOCAL_BIN}/awcc-gameshift-toggle"
+cp -f "${ROOT_DIR}/bin/setup-sudoers.sh" "${LOCAL_BIN}/setup-sudoers.sh"
 ln -sf "${LOCAL_BIN}/awcc-gameshift-toggle" "${LOCAL_BIN}/gmode"
 chmod +x \
     "${LOCAL_BIN}/awcc-lux-dashboard.py" \
@@ -35,7 +36,8 @@ chmod +x \
     "${LOCAL_BIN}/awcc-mode.sh" \
     "${LOCAL_BIN}/awcc-track" \
     "${LOCAL_BIN}/awcc-monitor" \
-    "${LOCAL_BIN}/awcc-gameshift-toggle"
+    "${LOCAL_BIN}/awcc-gameshift-toggle" \
+    "${LOCAL_BIN}/setup-sudoers.sh"
 
 # Install desktop icon, entry, shell completions, and man pages
 mkdir -p "${HOME}/.local/share/applications" "${HOME}/.local/share/icons/hicolor/scalable/apps"

@@ -15,9 +15,21 @@ Hardware support spans Alienware/Dell G-Series, ASUS ROG/TUF, Lenovo ThinkPad/Le
 HP OMEN, Acer Predator/Nitro, MSI Gaming, Framework, System76, and standard Linux desktop motherboards.
 .SH SUBCOMMANDS
 .TP
+.B detect [\-\-json]
+Detect hardware interface, active provider, and vendor DMI information.
+.TP
 .B status [\-\-json]
 Display the complete telemetry matrix including CPU and GPU compute utilization, clocks,
 temperatures, package and board power, RAM, battery, and fan speeds.
+.TP
+.B battery, quiet, balanced, performance, ultra [\-w|\-\-watch] [\-m|\-\-monitor]
+Direct single-command profile and fan boost actuation:
+\fIbattery\fR (low-power + 20% boost),
+\fIquiet\fR (acoustic silence + 40% boost),
+\fIbalanced\fR (daily productivity + 60% boost),
+\fIperformance\fR (high workload + 80% boost),
+\fIultra\fR (maximum cooling & Game Shift + 100% boost / 255 Max RPM).
+When passed \fB\-\-monitor\fR or \fB\-\-watch\fR, transitions directly into real-time telemetry streaming.
 .TP
 .B profile [\fIPROFILE\fR] [\-w|\-\-watch] [\-m|\-\-monitor]
 Get or set the active ACPI platform performance profile (e.g. \fIquiet\fR, \fIbalanced\fR, \fIperformance\fR).

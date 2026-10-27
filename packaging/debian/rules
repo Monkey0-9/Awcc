@@ -19,7 +19,7 @@ override_dh_auto_install:
 	install -m 0755 bin/awcc-gameshift-toggle.sh debian/awcc-linux/usr/bin/awcc-gameshift-toggle
 	ln -sf awcc-gameshift-toggle debian/awcc-linux/usr/bin/gmode
 
-	for m in battery quiet balance mid high ultra; do \
+	for m in battery quiet balance balanced mid high performance ultra; do \
 		if [ -f "bin/awcc-$$m" ]; then \
 			install -m 0755 "bin/awcc-$$m" "debian/awcc-linux/usr/bin/awcc-$$m"; \
 		fi \
@@ -33,6 +33,9 @@ override_dh_auto_install:
 
 	install -d debian/awcc-linux/usr/share/polkit-1/actions
 	install -m 0644 packaging/io.github.monkey0_9.awcc.policy debian/awcc-linux/usr/share/polkit-1/actions/io.github.monkey0_9.awcc.policy
+
+	install -d debian/awcc-linux/usr/share/polkit-1/rules.d
+	install -m 0644 packaging/90-awcc.rules debian/awcc-linux/usr/share/polkit-1/rules.d/90-awcc.rules
 
 	install -d debian/awcc-linux/usr/share/bash-completion/completions
 	install -m 0644 completions/bash/awccctl debian/awcc-linux/usr/share/bash-completion/completions/awccctl

@@ -48,6 +48,49 @@ fn test_asus_mock_sysfs() {
 }
 
 #[test]
+fn test_asus_strix_mock_sysfs() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+
+    let dmi = root.join("sys/devices/virtual/dmi/id");
+    fs::create_dir_all(&dmi).unwrap();
+    fs::write(dmi.join("sys_vendor"), "ASUSTeK COMPUTER INC.\n").unwrap();
+    fs::write(dmi.join("product_name"), "ROG Strix SCAR 16\n").unwrap();
+    fs::write(dmi.join("chassis_type"), "10\n").unwrap();
+
+    let asus_dev = root.join("sys/devices/platform/asus_wmi");
+    fs::create_dir_all(&asus_dev).unwrap();
+    fs::write(asus_dev.join("throttle_thermal_policy"), "0\n").unwrap();
+
+    let hw = HardwareManager::with_sysfs_root(root.to_path_buf());
+    let caps = hw.capabilities();
+
+    assert_eq!(caps.vendor, HardwareVendor::Asus);
+    assert_eq!(caps.tier, VerificationTier::Tier2CommunitySupported);
+    assert_eq!(caps.active_provider_name, "asus_wmi");
+    assert!(matches!(
+        caps.fan_control,
+        FanControlCapability::DiscreteLevels { .. }
+    ));
+
+    hw.set_fan_level(1, 255).unwrap();
+    assert_eq!(
+        fs::read_to_string(asus_dev.join("throttle_thermal_policy"))
+            .unwrap()
+            .trim(),
+        "1"
+    );
+
+    hw.release_fans().unwrap();
+    assert_eq!(
+        fs::read_to_string(asus_dev.join("throttle_thermal_policy"))
+            .unwrap()
+            .trim(),
+        "0"
+    );
+}
+
+#[test]
 fn test_lenovo_mock_sysfs() {
     let temp = TempDir::new().unwrap();
     let root = temp.path();

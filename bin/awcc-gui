@@ -11,6 +11,7 @@ import json
 import subprocess
 import re
 import shutil
+import threading
 
 VERSION = "0.3.0"
 
@@ -72,6 +73,22 @@ class AwccApp(Adw.Application):
         self.caps = self.query_capabilities()
         self.telemetry = self.query_telemetry()
         self.updating = False
+        self._action_in_flight = False
+        self._slider_debounce_id = None
+
+    def is_passwordless_configured(self):
+        for p in ["/sys/class/platform-profile/platform-profile-0/profile",
+                  "/sys/class/platform-profile/platform-profile-1/profile",
+                  "/sys/firmware/acpi/platform_profile"]:
+            if os.path.exists(p) and os.access(p, os.W_OK):
+                return True
+        try:
+            res = subprocess.run(["sudo", "-n", self.ctl, "capabilities", "--json"], capture_output=True, timeout=1)
+            if res.returncode == 0:
+                return True
+        except Exception:
+            pass
+        return False
 
     def run_privileged(self, cmd_args):
         """
@@ -80,33 +97,62 @@ class AwccApp(Adw.Application):
         2. Passwordless sudo (sudo -n)
         3. PolicyKit desktop GUI authentication (pkexec)
         """
+        self._action_in_flight = True
         try:
-            res = subprocess.run(cmd_args, capture_output=True, text=True, timeout=5)
-            if res.returncode == 0:
-                return res
-        except Exception as e:
-            res = subprocess.CompletedProcess(cmd_args, 1, stderr=str(e), stdout="")
-
-        err_lower = ((res.stderr or "") + (res.stdout or "")).lower()
-        if "permission denied" in err_lower or "permissiondenied" in err_lower or res.returncode != 0:
-            # Try passwordless sudo
+            # 1. Direct execution
             try:
-                sudo_res = subprocess.run(["sudo", "-n"] + cmd_args, capture_output=True, text=True, timeout=5)
-                if sudo_res.returncode == 0:
-                    return sudo_res
-            except Exception:
-                pass
+                res = subprocess.run(cmd_args, capture_output=True, text=True, timeout=5)
+                if res.returncode == 0:
+                    return res
+            except Exception as e:
+                res = subprocess.CompletedProcess(cmd_args, 1, stderr=str(e), stdout="")
 
-            # Try pkexec for native GUI PolicyKit authentication prompt
-            pkexec_path = shutil.which("pkexec")
-            if pkexec_path:
+            err_lower = ((res.stderr or "") + (res.stdout or "")).lower()
+            if "permission denied" in err_lower or "permissiondenied" in err_lower or res.returncode != 0:
+                # 2. Try passwordless sudo
                 try:
-                    pk_res = subprocess.run([pkexec_path] + cmd_args, capture_output=True, text=True, timeout=30)
-                    return pk_res
-                except Exception as e:
-                    return subprocess.CompletedProcess(cmd_args, 1, stderr=f"Authentication error: {e}", stdout="")
+                    sudo_res = subprocess.run(["sudo", "-n"] + cmd_args, capture_output=True, text=True, timeout=5)
+                    if sudo_res.returncode == 0:
+                        return sudo_res
+                except Exception:
+                    pass
 
-        return res
+                # 3. Try pkexec for native GUI PolicyKit authentication prompt
+                pkexec_path = shutil.which("pkexec")
+                if pkexec_path:
+                    exec_cmd = list(cmd_args)
+                    for sys_bin in ["/usr/local/bin/awccctl", "/usr/bin/awccctl"]:
+                        if os.path.isfile(sys_bin) and os.access(sys_bin, os.X_OK):
+                            exec_cmd[0] = sys_bin
+                            break
+                    try:
+                        pk_res = subprocess.run([pkexec_path] + exec_cmd, capture_output=True, text=True, timeout=60)
+                        return pk_res
+                    except Exception as e:
+                        return subprocess.CompletedProcess(cmd_args, 1, stderr=f"Authentication error: {e}", stdout="")
+
+            return res
+        finally:
+            self._action_in_flight = False
+
+    def run_privileged_async(self, cmd_args, on_complete=None):
+        """
+        Executes a hardware command in a background thread so the GTK event loop never freezes.
+        Invokes on_complete(result) safely on the GTK main thread via GLib.idle_add.
+        """
+        def worker():
+            res = self.run_privileged(cmd_args)
+            if on_complete:
+                GLib.idle_add(on_complete, res)
+            else:
+                GLib.idle_add(self._default_action_complete, res)
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+
+    def _default_action_complete(self, res):
+        self.telemetry = self.query_telemetry()
+        self.update_telemetry_ui()
 
     def query_capabilities(self):
         try:
@@ -209,7 +255,22 @@ class AwccApp(Adw.Application):
             subtitle=f"{display_machine} • {display_tier}"
         )
         header.set_title_widget(title_widget)
+
+        self.security_btn = Gtk.Button.new_from_icon_name("security-high-symbolic")
+        self.security_btn.set_tooltip_text("Configure Passwordless Hardware Permissions")
+        self.security_btn.connect("clicked", self.on_configure_permissions_clicked)
+        header.pack_end(self.security_btn)
+
         content_box.append(header)
+
+        # Banner for passwordless permissions
+        self.perm_banner = Adw.Banner(
+            title="Enable passwordless hardware control to eliminate authentication prompts",
+            button_label="Configure",
+            revealed=not self.is_passwordless_configured()
+        )
+        self.perm_banner.connect("button-clicked", self.on_configure_permissions_clicked)
+        content_box.append(self.perm_banner)
 
         # Toast Overlay
         self.toast_overlay = Adw.ToastOverlay()
@@ -478,8 +539,9 @@ class AwccApp(Adw.Application):
         return False
 
     def on_timer_tick(self):
-        self.telemetry = self.query_telemetry()
-        self.update_telemetry_ui()
+        if not getattr(self, '_action_in_flight', False):
+            self.telemetry = self.query_telemetry()
+            self.update_telemetry_ui()
         return True
 
     def update_telemetry_ui(self):
@@ -649,7 +711,7 @@ class AwccApp(Adw.Application):
                 self.updating = False
 
         # Synchronize manual fan boost slider without triggering callbacks
-        if hasattr(self, 'fan_slider') and fans:
+        if hasattr(self, 'fan_slider') and fans and getattr(self, '_slider_debounce_id', None) is None:
             b_val = fans[0].get("readback_boost", 0) or 0
             self.updating = True
             try:
@@ -662,87 +724,125 @@ class AwccApp(Adw.Application):
         toast.set_timeout(3)
         self.toast_overlay.add_toast(toast)
 
-    def on_profile_button_clicked(self, button, profile_name):
-        self.show_toast(f"Setting profile to '{profile_name.capitalize()}'...")
-        if profile_name.lower() == "ultra":
-            res = self.run_privileged([self.ctl, "gmode", "on"])
-            if res.returncode != 0:
-                self.run_privileged([self.ctl, "profile", "performance"])
-                res = self.run_privileged([self.ctl, "fan", "max"])
-        else:
-            if self.is_gmode_active():
-                self.run_privileged([self.ctl, "gmode", "off"])
-            res = self.run_privileged([self.ctl, "profile", profile_name])
-            boost_map = {"battery": 51, "quiet": 102, "balanced": 153, "performance": 204}
-            if profile_name in boost_map:
-                b = boost_map[profile_name]
-                for f in self.telemetry.get("fans", []):
-                    idx = f.get("fan_index", 1)
-                    self.run_privileged([self.ctl, "fan", "set", "--fan", str(idx), "--boost", str(b)])
+    def on_configure_permissions_clicked(self, widget):
+        self.show_toast("Opening authorization to enable passwordless control...")
+        setup_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "setup-sudoers.sh")
+        if not os.path.isfile(setup_script):
+            setup_script = os.path.expanduser("~/Awcc/bin/setup-sudoers.sh")
 
-        if res.returncode == 0:
-            self.show_toast(f"Profile set to {profile_name.capitalize()}")
+        def on_done(res):
+            if res.returncode == 0:
+                self.show_toast("Passwordless hardware control successfully enabled!")
+                if hasattr(self, 'perm_banner'):
+                    self.perm_banner.set_revealed(False)
+            else:
+                err = (res.stderr or res.stdout or "Setup was not completed").strip()
+                if "[-]" in err:
+                    err = err.replace("[-] Error: ", "").replace("[-] ", "")
+                self.show_toast(f"Setup cancelled: {err}")
+            self.ctl = find_awccctl_bin()
+            self.telemetry = self.query_telemetry()
+            self.update_telemetry_ui()
+
+        pkexec_path = shutil.which("pkexec")
+        if pkexec_path and os.path.isfile(setup_script):
+            self.run_privileged_async([pkexec_path, "/bin/bash", setup_script], on_complete=on_done)
         else:
-            err_msg = res.stderr.strip() or res.stdout.strip() or 'Permission denied'
-            if "[-]" in err_msg:
-                err_msg = err_msg.replace("[-] Error: ", "").replace("[-] ", "")
-            self.show_toast(f"Failed to set profile: {err_msg}")
-        self.telemetry = self.query_telemetry()
-        self.update_telemetry_ui()
+            self.show_toast("Run 'sudo ./bin/setup-sudoers.sh' in terminal to configure.")
+
+    def on_profile_button_clicked(self, button, profile_name):
+        self.show_toast(f"Actuating {profile_name.capitalize()} profile...")
+
+        def on_done(res):
+            if res.returncode == 0:
+                self.show_toast(f"Profile set to {profile_name.capitalize()}")
+            else:
+                err_msg = (res.stderr or res.stdout or 'Permission denied').strip()
+                if "[-]" in err_msg:
+                    err_msg = err_msg.replace("[-] Error: ", "").replace("[-] ", "")
+                self.show_toast(f"Failed to set profile: {err_msg}")
+            self.telemetry = self.query_telemetry()
+            self.update_telemetry_ui()
+
+        self.run_privileged_async([self.ctl, "profile", profile_name], on_complete=on_done)
 
     def on_gmode_toggled(self, switch, state):
         if getattr(self, 'updating', False):
             return False
         target = "on" if state else "off"
         self.show_toast(f"Actuating Game Shift: {target.upper()}...")
-        res = self.run_privileged([self.ctl, "gmode", target])
-        if res.returncode != 0 and target == "on":
-            self.run_privileged([self.ctl, "profile", "performance"])
-            res = self.run_privileged([self.ctl, "fan", "max"])
-        if res.returncode == 0:
-            self.show_toast(f"Game Shift: {target.upper()}")
-        else:
-            err_msg = res.stderr.strip() or res.stdout.strip() or 'Permission denied'
-            if "[-]" in err_msg:
-                err_msg = err_msg.replace("[-] Error: ", "").replace("[-] ", "")
-            self.show_toast(f"Failed: {err_msg}")
-        self.telemetry = self.query_telemetry()
-        self.update_telemetry_ui()
+
+        def on_done(res):
+            if res.returncode == 0:
+                self.show_toast(f"Game Shift: {target.upper()}")
+            else:
+                err_msg = (res.stderr or res.stdout or 'Permission denied').strip()
+                if "[-]" in err_msg:
+                    err_msg = err_msg.replace("[-] Error: ", "").replace("[-] ", "")
+                self.show_toast(f"Failed: {err_msg}")
+            self.telemetry = self.query_telemetry()
+            self.update_telemetry_ui()
+
+        self.run_privileged_async([self.ctl, "gmode", target], on_complete=on_done)
         return True
 
     def on_slider_changed(self, scale):
         if getattr(self, 'updating', False):
             return
         val = int(scale.get_value())
-        for f in self.telemetry.get("fans", []):
-            idx = f.get("fan_index", 1)
-            self.run_privileged([self.ctl, "fan", "set", "--fan", str(idx), "--boost", str(val)])
+        if getattr(self, '_slider_debounce_id', None):
+            GLib.source_remove(self._slider_debounce_id)
+        self._slider_debounce_id = GLib.timeout_add(350, self._apply_slider_value, val)
+
+    def _apply_slider_value(self, val):
+        self._slider_debounce_id = None
+        self.show_toast(f"Setting fan boost to {val}/255...")
+
+        def on_done(res):
+            if res.returncode == 0:
+                self.show_toast(f"Fan boost set to {val}/255")
+            else:
+                err_msg = (res.stderr or res.stdout or 'Permission error').strip()
+                if "[-]" in err_msg:
+                    err_msg = err_msg.replace("[-] Error: ", "").replace("[-] ", "")
+                self.show_toast(f"Failed to set fan boost: {err_msg}")
+            self.telemetry = self.query_telemetry()
+            self.update_telemetry_ui()
+
+        self.run_privileged_async([self.ctl, "fan", "set", "--boost", str(val)], on_complete=on_done)
+        return False
 
     def on_max_fans_clicked(self, button):
         self.show_toast("Actuating 100% maximum fan boost...")
-        res = self.run_privileged([self.ctl, "fan", "max"])
-        if res.returncode == 0:
-            self.show_toast("Maximum fans active (255/255)")
-        else:
-            err_msg = res.stderr.strip() or res.stdout.strip() or 'Permission error'
-            if "[-]" in err_msg:
-                err_msg = err_msg.replace("[-] Error: ", "").replace("[-] ", "")
-            self.show_toast(f"Failed: {err_msg}")
-        self.telemetry = self.query_telemetry()
-        self.update_telemetry_ui()
+
+        def on_done(res):
+            if res.returncode == 0:
+                self.show_toast("Maximum fans active (255/255)")
+            else:
+                err_msg = (res.stderr or res.stdout or 'Permission error').strip()
+                if "[-]" in err_msg:
+                    err_msg = err_msg.replace("[-] Error: ", "").replace("[-] ", "")
+                self.show_toast(f"Failed: {err_msg}")
+            self.telemetry = self.query_telemetry()
+            self.update_telemetry_ui()
+
+        self.run_privileged_async([self.ctl, "fan", "max"], on_complete=on_done)
 
     def on_release_fans_clicked(self, button):
         self.show_toast("Releasing fans to BIOS firmware control...")
-        res = self.run_privileged([self.ctl, "fan", "release"])
-        if res.returncode == 0:
-            self.show_toast("Fans returned to automatic firmware curve")
-        else:
-            err_msg = res.stderr.strip() or res.stdout.strip() or 'Permission error'
-            if "[-]" in err_msg:
-                err_msg = err_msg.replace("[-] Error: ", "").replace("[-] ", "")
-            self.show_toast(f"Failed: {err_msg}")
-        self.telemetry = self.query_telemetry()
-        self.update_telemetry_ui()
+
+        def on_done(res):
+            if res.returncode == 0:
+                self.show_toast("Fans returned to automatic firmware curve")
+            else:
+                err_msg = (res.stderr or res.stdout or 'Permission error').strip()
+                if "[-]" in err_msg:
+                    err_msg = err_msg.replace("[-] Error: ", "").replace("[-] ", "")
+                self.show_toast(f"Failed: {err_msg}")
+            self.telemetry = self.query_telemetry()
+            self.update_telemetry_ui()
+
+        self.run_privileged_async([self.ctl, "fan", "release"], on_complete=on_done)
 
 if __name__ == "__main__":
     is_test = ("--test" in sys.argv)

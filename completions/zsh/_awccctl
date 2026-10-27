@@ -3,7 +3,13 @@
 _awccctl() {
     local -a subcommands
     subcommands=(
+        'detect:Detect hardware interface, active provider, and vendor DMI'
         'status:Query comprehensive hardware performance and thermal status'
+        'battery:Engage Battery Saver profile (Quiet profile + 20% fan boost)'
+        'quiet:Engage Quiet profile (Acoustic silence + 40% fan boost)'
+        'balanced:Engage Balanced profile (Daily productivity + 60% fan boost)'
+        'performance:Engage Performance profile (High workload + 80% fan boost)'
+        'ultra:Engage Ultra profile (Maximum cooling & Game Shift + 100% fan boost)'
         'profile:Get or set platform performance profile'
         'fan:Manage fan speed and boost offset levels'
         'gmode:Actuate or query Game Shift (G-Mode) status'
@@ -29,19 +35,13 @@ _awccctl() {
                 profile)
                     _values 'profiles' 'quiet' 'balanced' 'performance' 'low-power' 'custom'
                     ;;
-                fan)
-                    _values 'fan commands' 'set' 'boost' 'max' 'release'
-                    ;;
-                gmode)
-                    _values 'gmode actions' 'status' 'on' 'off' 'toggle'
-                    ;;
-                track|monitor)
+                battery|quiet|balanced|performance|ultra)
                     _arguments \
-                        '--interval[Sampling interval in seconds]:seconds:' \
-                        '--json[Output telemetry as JSON lines]' \
-                        '--once[Output single telemetry snapshot and exit]'
+                        '(-w --watch)'{-w,--watch}'[Watch and stream real-time telemetry after actuation]' \
+                        '(-m --monitor)'{-m,--monitor}'[Stream real-time telemetry after actuation]' \
+                        '--interval[Sampling interval in seconds]:seconds:'
                     ;;
-                status|capabilities)
+                detect|status|capabilities)
                     _arguments \
                         '--json[Format output as structured JSON]'
                     ;;

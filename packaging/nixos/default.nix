@@ -42,6 +42,8 @@ rustPlatform.buildRustPackage rec {
 
     install -Dm644 packaging/awcc-gui.desktop $out/share/applications/awcc-gui.desktop
     install -Dm644 packaging/icons/awcc-gui.svg $out/share/icons/hicolor/scalable/apps/awcc-gui.svg
+    install -Dm644 packaging/io.github.monkey0_9.awcc.policy $out/share/polkit-1/actions/io.github.monkey0_9.awcc.policy
+    install -Dm644 packaging/90-awcc.rules $out/share/polkit-1/rules.d/90-awcc.rules
     install -Dm644 systemd/awccd.service $out/lib/systemd/system/awccd.service
   '';
 

@@ -29,6 +29,19 @@ impl AsusProvider {
             || sysfs.join("sys/devices/platform/asus_wmi").exists()
             || sysfs.join("sys/bus/platform/drivers/asus-nb-wmi").exists()
     }
+
+    fn find_throttle_policy(sysfs: &Path) -> Option<std::path::PathBuf> {
+        for cand in [
+            "sys/devices/platform/asus-nb-wmi/throttle_thermal_policy",
+            "sys/devices/platform/asus_wmi/throttle_thermal_policy",
+        ] {
+            let p = sysfs.join(cand);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+        None
+    }
 }
 
 impl HardwareProvider for AsusProvider {
@@ -68,9 +81,7 @@ impl HardwareProvider for AsusProvider {
         caps.tier = VerificationTier::Tier2CommunitySupported;
         caps.active_provider_name = self.name().to_string();
 
-        let throttle_policy =
-            sysfs.join("sys/devices/platform/asus-nb-wmi/throttle_thermal_policy");
-        if throttle_policy.exists() {
+        if Self::find_throttle_policy(sysfs).is_some() {
             caps.fan_control = FanControlCapability::DiscreteLevels {
                 levels: vec![
                     "0 (Default)".to_string(),
@@ -91,9 +102,7 @@ impl HardwareProvider for AsusProvider {
     }
 
     fn set_fan_level(&self, sysfs: &Path, _fan_index: u8, level: u8) -> Result<(), AwccError> {
-        let throttle_policy =
-            sysfs.join("sys/devices/platform/asus-nb-wmi/throttle_thermal_policy");
-        if throttle_policy.exists() {
+        if let Some(throttle_policy) = Self::find_throttle_policy(sysfs) {
             let policy_val = if level >= 200 {
                 "1"
             } else if level <= 50 {
@@ -111,9 +120,7 @@ impl HardwareProvider for AsusProvider {
     }
 
     fn set_max_fans(&self, sysfs: &Path) -> Result<(), AwccError> {
-        let throttle_policy =
-            sysfs.join("sys/devices/platform/asus-nb-wmi/throttle_thermal_policy");
-        if throttle_policy.exists() {
+        if let Some(throttle_policy) = Self::find_throttle_policy(sysfs) {
             return fs::write(&throttle_policy, "1\n").map_err(|e| AwccError::Io {
                 path: throttle_policy.display().to_string(),
                 source: e,
@@ -123,9 +130,7 @@ impl HardwareProvider for AsusProvider {
     }
 
     fn release_fans(&self, sysfs: &Path) -> Result<(), AwccError> {
-        let throttle_policy =
-            sysfs.join("sys/devices/platform/asus-nb-wmi/throttle_thermal_policy");
-        if throttle_policy.exists() {
+        if let Some(throttle_policy) = Self::find_throttle_policy(sysfs) {
             return fs::write(&throttle_policy, "0\n").map_err(|e| AwccError::Io {
                 path: throttle_policy.display().to_string(),
                 source: e,

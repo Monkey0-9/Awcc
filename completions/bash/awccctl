@@ -5,7 +5,7 @@ _awccctl() {
     local cur prev words cword
     _init_completion || return
 
-    local subcommands="status profile fan gmode track monitor capabilities doctor verify help"
+    local subcommands="detect status profile battery quiet balanced performance ultra fan gmode track monitor capabilities doctor verify help"
     local profiles="quiet balanced performance low-power custom"
     local fan_cmds="set boost max release"
 
@@ -21,6 +21,10 @@ _awccctl() {
             else
                 COMPREPLY=( $(compgen -W "--watch -w --monitor -m --interval" -- "$cur") )
             fi
+            return 0
+            ;;
+        battery|quiet|balanced|performance|ultra)
+            COMPREPLY=( $(compgen -W "--watch -w --monitor -m --interval" -- "$cur") )
             return 0
             ;;
         fan)
@@ -47,7 +51,7 @@ _awccctl() {
             COMPREPLY=( $(compgen -W "--interval --json --once" -- "$cur") )
             return 0
             ;;
-        status|capabilities)
+        detect|status|capabilities)
             COMPREPLY=( $(compgen -W "--json" -- "$cur") )
             return 0
             ;;

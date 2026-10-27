@@ -1,5 +1,5 @@
 Name:           awcc-linux
-Version:        2.5.0
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Alienware Command Center (AWCC) & Game Shift Control Suite for Dell Laptops on Linux
 License:        GPL-2.0-or-later AND MIT
@@ -34,25 +34,26 @@ install -m 0755 bin/awcc-gui $RPM_BUILD_ROOT%{_bindir}/awcc-gui
 install -m 0755 bin/awcc-mode.sh $RPM_BUILD_ROOT%{_bindir}/awcc-mode
 install -m 0755 bin/awcc-track $RPM_BUILD_ROOT%{_bindir}/awcc-track
 install -m 0755 bin/awcc-monitor $RPM_BUILD_ROOT%{_bindir}/awcc-monitor
-install -m 0755 bin/awcc-battery $RPM_BUILD_ROOT%{_bindir}/awcc-battery
-install -m 0755 bin/awcc-quiet $RPM_BUILD_ROOT%{_bindir}/awcc-quiet
-install -m 0755 bin/awcc-balance $RPM_BUILD_ROOT%{_bindir}/awcc-balance
-install -m 0755 bin/awcc-mid $RPM_BUILD_ROOT%{_bindir}/awcc-mid
-install -m 0755 bin/awcc-high $RPM_BUILD_ROOT%{_bindir}/awcc-high
-install -m 0755 bin/awcc-ultra $RPM_BUILD_ROOT%{_bindir}/awcc-ultra
+for m in battery quiet balance balanced mid high performance ultra; do
+    if [ -f "bin/awcc-${m}" ]; then
+        install -m 0755 "bin/awcc-${m}" "$RPM_BUILD_ROOT%{_bindir}/awcc-${m}"
+    fi
+done
 install -m 0755 bin/awcc-gameshift-toggle.sh $RPM_BUILD_ROOT%{_bindir}/awcc-gameshift-toggle
 ln -sf %{_bindir}/awcc-gameshift-toggle $RPM_BUILD_ROOT%{_bindir}/gmode
 
 # Telemetry Cockpit
 install -m 0755 bin/awcc-lux-dashboard.py $RPM_BUILD_ROOT%{_bindir}/awcc-lux-dashboard.py
 
-# Desktop Entry, Icon, and PolicyKit Policy
+# Desktop Entry, Icon, and PolicyKit Policy & Rules
 install -d $RPM_BUILD_ROOT%{_datadir}/applications
 install -m 0644 packaging/awcc-gui.desktop $RPM_BUILD_ROOT%{_datadir}/applications/awcc-gui.desktop
 install -d $RPM_BUILD_ROOT%{_datadir}/icons/hicolor/scalable/apps
 install -m 0644 packaging/icons/awcc-gui.svg $RPM_BUILD_ROOT%{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
 install -d $RPM_BUILD_ROOT%{_datadir}/polkit-1/actions
 install -m 0644 packaging/io.github.monkey0_9.awcc.policy $RPM_BUILD_ROOT%{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
+install -d $RPM_BUILD_ROOT%{_datadir}/polkit-1/rules.d
+install -m 0644 packaging/90-awcc.rules $RPM_BUILD_ROOT%{_datadir}/polkit-1/rules.d/90-awcc.rules
 
 # Shell Completions
 install -d $RPM_BUILD_ROOT%{_datadir}/bash-completion/completions
@@ -97,12 +98,7 @@ fi
 %{_bindir}/awcc-mode
 %{_bindir}/awcc-track
 %{_bindir}/awcc-monitor
-%{_bindir}/awcc-battery
-%{_bindir}/awcc-quiet
-%{_bindir}/awcc-balance
-%{_bindir}/awcc-mid
-%{_bindir}/awcc-high
-%{_bindir}/awcc-ultra
+%{_bindir}/awcc-*
 %{_bindir}/awcc-gameshift-toggle
 %{_bindir}/gmode
 %{_bindir}/awcc-lux-dashboard.py
@@ -110,6 +106,7 @@ fi
 %{_datadir}/applications/awcc-gui.desktop
 %{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
 %{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
+%{_datadir}/polkit-1/rules.d/90-awcc.rules
 %{_datadir}/bash-completion/completions/awccctl
 %{_datadir}/zsh/site-functions/_awccctl
 %{_datadir}/fish/vendor_completions.d/awccctl.fish

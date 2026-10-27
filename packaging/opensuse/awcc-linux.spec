@@ -48,7 +48,7 @@ install -m 0755 bin/awcc-monitor %{buildroot}%{_bindir}/awcc-monitor
 install -m 0755 bin/awcc-gameshift-toggle.sh %{buildroot}%{_bindir}/awcc-gameshift-toggle
 ln -sf %{_bindir}/awcc-gameshift-toggle %{buildroot}%{_bindir}/gmode
 
-for m in battery quiet balance mid high ultra; do
+for m in battery quiet balance balanced mid high performance ultra; do
     if [ -f "bin/awcc-${m}" ]; then
         install -m 0755 "bin/awcc-${m}" "%{buildroot}%{_bindir}/awcc-${m}"
     fi
@@ -65,9 +65,11 @@ install -m 0644 packaging/awcc-gui.desktop %{buildroot}%{_datadir}/applications/
 install -d %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
 install -m 0644 packaging/icons/awcc-gui.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
 
-# PolicyKit Policy
+# PolicyKit Policy & Rules
 install -d %{buildroot}%{_datadir}/polkit-1/actions
 install -m 0644 packaging/io.github.monkey0_9.awcc.policy %{buildroot}%{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
+install -d %{buildroot}%{_datadir}/polkit-1/rules.d
+install -m 0644 packaging/90-awcc.rules %{buildroot}%{_datadir}/polkit-1/rules.d/90-awcc.rules
 
 # Shell Completions
 install -d %{buildroot}%{_datadir}/bash-completion/completions
@@ -106,6 +108,7 @@ install -m 0644 man/man1/*.1 %{buildroot}%{_mandir}/man1/
 %{_datadir}/applications/awcc-gui.desktop
 %{_datadir}/icons/hicolor/scalable/apps/awcc-gui.svg
 %{_datadir}/polkit-1/actions/io.github.monkey0_9.awcc.policy
+%{_datadir}/polkit-1/rules.d/90-awcc.rules
 %{_datadir}/bash-completion/completions/awccctl
 %{_datadir}/zsh/site-functions/_awccctl
 %{_datadir}/fish/vendor_completions.d/awccctl.fish

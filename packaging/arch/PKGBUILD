@@ -30,7 +30,7 @@ package() {
     ln -sf awcc-gameshift-toggle "$pkgdir/usr/bin/gmode"
 
     # Shell profile shortcuts
-    for m in battery quiet balance mid high ultra; do
+    for m in battery quiet balance balanced mid high performance ultra; do
         if [ -f "bin/awcc-${m}" ]; then
             install -Dm755 "bin/awcc-${m}" "$pkgdir/usr/bin/awcc-${m}"
         fi
@@ -40,8 +40,9 @@ package() {
     install -Dm644 packaging/awcc-gui.desktop "$pkgdir/usr/share/applications/awcc-gui.desktop"
     install -Dm644 packaging/icons/awcc-gui.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/awcc-gui.svg"
 
-    # PolicyKit Policy
+    # PolicyKit Policy & Rules
     install -Dm644 packaging/io.github.monkey0_9.awcc.policy "$pkgdir/usr/share/polkit-1/actions/io.github.monkey0_9.awcc.policy"
+    install -Dm644 packaging/90-awcc.rules "$pkgdir/usr/share/polkit-1/rules.d/90-awcc.rules"
 
     # Shell Completions
     install -Dm644 completions/bash/awccctl "$pkgdir/usr/share/bash-completion/completions/awccctl"
