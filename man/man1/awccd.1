@@ -1,0 +1,38 @@
+.TH AWCCD 1 "October 2026" "AWCC Linux 0.3.0" "System Daemon Commands"
+.SH NAME
+awccd \- Universal Autonomous Thermal & Hardware Safety Governor Daemon
+.SH SYNOPSIS
+.B awccd
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B awccd
+is the background autonomous thermal management daemon for the AWCC Linux ecosystem.
+It executes closed-loop temperature monitoring across CPU, GPU, VRM, and memory SODIMMs,
+applying piecewise-linear fan curves with anti-hunt hysteresis damping when in custom mode.
+.PP
+On termination (SIGTERM, SIGINT, SIGHUP) or sensor failure,
+.B awccd
+automatically executes emergency fail-safe fan release back to the BIOS/firmware control curve
+to guarantee physical hardware protection.
+.SH OPTIONS
+.TP
+.B \-\-sysfs\-root <\fIPATH\fR>
+Specify alternative sysfs root directory for mock testing and hardware simulation.
+.TP
+.B \-\-once
+Run a single evaluation cycle and exit immediately.
+.TP
+.B \-h, \-\-help
+Display help documentation and exit.
+.SH SYSTEMD INTEGRATION
+The daemon is typically managed by systemd as
+.BR awccd.service :
+.IP
+.B sudo systemctl enable --now awccd.service
+.SH SECURITY BOUNDARY
+.B awccd
+runs with standard root privileges to adjust sysfs hardware nodes without requiring world-writable permissions.
+.SH SEE ALSO
+.BR awccctl (1),
+.BR awcc-mode (1),
+.BR awcc-lux-dashboard (1)

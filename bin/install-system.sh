@@ -179,7 +179,7 @@ fi
 # Install Manual Pages
 echo "[*] Installing Unix manual pages to /usr/share/man/man1..."
 mkdir -p /usr/share/man/man1
-for mp in awccctl.1 awcc-lux-dashboard.1 awcc-mode.1; do
+for mp in awccctl.1 awccd.1 awcc-lux-dashboard.1 awcc-mode.1; do
     if [[ -f "${REPO_DIR}/man/man1/${mp}" ]]; then
         cp -f "${REPO_DIR}/man/man1/${mp}" "/usr/share/man/man1/${mp}"
         chmod 0644 "/usr/share/man/man1/${mp}"

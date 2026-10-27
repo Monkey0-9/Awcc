@@ -45,6 +45,13 @@ rustPlatform.buildRustPackage rec {
     install -Dm644 packaging/io.github.monkey0_9.awcc.policy $out/share/polkit-1/actions/io.github.monkey0_9.awcc.policy
     install -Dm644 packaging/90-awcc.rules $out/share/polkit-1/rules.d/90-awcc.rules
     install -Dm644 systemd/awccd.service $out/lib/systemd/system/awccd.service
+
+    for mp in man/man1/*.1; do
+      install -Dm644 "$mp" "$out/share/man/man1/$(basename "$mp")"
+    done
+    install -Dm644 completions/bash/awccctl $out/share/bash-completion/completions/awccctl
+    install -Dm644 completions/zsh/_awccctl $out/share/zsh/site-functions/_awccctl
+    install -Dm644 completions/fish/awccctl.fish $out/share/fish/vendor_completions.d/awccctl.fish
   '';
 
   meta = with lib; {

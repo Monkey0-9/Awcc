@@ -54,7 +54,7 @@ if [[ -f "${ROOT_DIR}/completions/bash/awccctl" ]]; then
 fi
 
 mkdir -p "${HOME}/.local/share/man/man1"
-for mp in awccctl.1 awcc-lux-dashboard.1 awcc-mode.1; do
+for mp in awccctl.1 awccd.1 awcc-lux-dashboard.1 awcc-mode.1; do
     if [[ -f "${ROOT_DIR}/man/man1/${mp}" ]]; then
         cp -f "${ROOT_DIR}/man/man1/${mp}" "${HOME}/.local/share/man/man1/${mp}"
     fi

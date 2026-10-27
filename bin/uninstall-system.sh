@@ -99,6 +99,7 @@ rm -f /usr/share/bash-completion/completions/awccctl
 rm -f /usr/share/zsh/site-functions/_awccctl
 rm -f /usr/share/fish/vendor_completions.d/awccctl.fish
 rm -f /usr/share/man/man1/awccctl.1
+rm -f /usr/share/man/man1/awccd.1
 rm -f /usr/share/man/man1/awcc-lux-dashboard.1
 rm -f /usr/share/man/man1/awcc-mode.1
 
